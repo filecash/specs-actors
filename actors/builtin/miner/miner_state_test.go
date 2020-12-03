@@ -9,16 +9,16 @@ import (
 	"github.com/filecoin-project/go-bitfield"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/go-state-types/exitcode"
 	cid "github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/filecoin-project/specs-actors/actors/builtin"
-	"github.com/filecoin-project/specs-actors/actors/builtin/miner"
-	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
-	"github.com/filecoin-project/specs-actors/actors/util/adt"
-	"github.com/filecoin-project/specs-actors/support/ipld"
-	tutils "github.com/filecoin-project/specs-actors/support/testing"
+	"github.com/filecoin-project/specs-actors/v2/actors/builtin"
+	"github.com/filecoin-project/specs-actors/v2/actors/builtin/miner"
+	"github.com/filecoin-project/specs-actors/v2/actors/util/adt"
+	"github.com/filecoin-project/specs-actors/v2/support/ipld"
+	tutils "github.com/filecoin-project/specs-actors/v2/support/testing"
 )
 
 func TestPrecommittedSectorsStore(t *testing.T) {
@@ -647,9 +647,12 @@ func TestSectorAssignment(t *testing.T) {
 	t.Run("assign sectors to deadlines", func(t *testing.T) {
 		harness := constructStateHarness(t, abi.ChainEpoch(0))
 
-		newPower, err := harness.s.AssignSectorsToDeadlines(harness.store, 0, sectorInfos, partitionSectors, sectorSize)
+		newPower, err := harness.s.AssignSectorsToDeadlines(harness.store, 0, sectorInfos,
+			partitionSectors, sectorSize)
+
+		sectorArr := sectorsArr(t, harness.store, sectorInfos)
 		require.NoError(t, err)
-		require.True(t, newPower.Equals(miner.PowerForSectors(sectorSize, sectorInfos)))
+		require.True(t, newPower.IsZero())
 
 		dls, err := harness.s.LoadDeadlines(harness.store)
 		require.NoError(t, err)
@@ -663,17 +666,43 @@ func TestSectorAssignment(t *testing.T) {
 			}
 
 			var partitions []bitfield.BitField
+			var postPartitions []miner.PoStPartition
 			for i := uint64(0); i < uint64(partitionsPerDeadline); i++ {
 				start := ((i * openDeadlines) + (dlIdx - 2)) * partitionSectors
-				bf := seq(t, start, partitionSectors)
-				partitions = append(partitions, bf)
+				partBf := seq(t, start, partitionSectors)
+				partitions = append(partitions, partBf)
+				postPartitions = append(postPartitions, miner.PoStPartition{
+					Index:   i,
+					Skipped: bf(),
+				})
 			}
+			allSectorBf, err := bitfield.MultiMerge(partitions...)
+			require.NoError(t, err)
+			allSectorNos, err := allSectorBf.All(uint64(noSectors))
+			require.NoError(t, err)
+
 			dlState.withQuantSpec(quantSpec).
+				withUnproven(allSectorNos...).
 				withPartitions(partitions...).
 				assert(t, harness.store, dl)
 
+			// Now make sure proving activates power.
+
+			result, err := dl.RecordProvenSectors(harness.store, sectorArr, sectorSize, quantSpec, 0, postPartitions)
+			require.NoError(t, err)
+
+			expectedPowerDelta := miner.PowerForSectors(sectorSize, selectSectors(t, sectorInfos, allSectorBf))
+
+			assertBitfieldsEqual(t, allSectorBf, result.Sectors)
+			assertBitfieldEmpty(t, result.IgnoredSectors)
+			assert.True(t, result.NewFaultyPower.Equals(miner.NewPowerPairZero()))
+			assert.True(t, result.PowerDelta.Equals(expectedPowerDelta))
+			assert.True(t, result.RecoveredPower.Equals(miner.NewPowerPairZero()))
+			assert.True(t, result.RetractedRecoveryPower.Equals(miner.NewPowerPairZero()))
 			return nil
 		}))
+
+		// Now prove and activate/check power.
 	})
 }
 
@@ -732,6 +761,36 @@ func TestSectorNumberAllocation(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestRepayDebtInPriorityOrder(t *testing.T) {
+	harness := constructStateHarness(t, abi.ChainEpoch(0))
+
+	currentBalance := abi.NewTokenAmount(300)
+	fee := abi.NewTokenAmount(1000)
+	err := harness.s.ApplyPenalty(fee)
+	require.NoError(t, err)
+
+	assert.Equal(t, harness.s.FeeDebt, fee)
+	penaltyFromVesting, penaltyFromBalance, err := harness.s.RepayPartialDebtInPriorityOrder(harness.store, abi.ChainEpoch(0), currentBalance)
+	require.NoError(t, err)
+
+	assert.Equal(t, penaltyFromVesting, big.Zero())
+	assert.Equal(t, penaltyFromBalance, currentBalance)
+
+	expectedDebt := big.Sub(currentBalance, fee).Neg()
+	assert.Equal(t, expectedDebt, harness.s.FeeDebt)
+
+	currentBalance = abi.NewTokenAmount(0)
+	fee = abi.NewTokenAmount(2050)
+	err = harness.s.ApplyPenalty(fee)
+	require.NoError(t, err)
+
+	_, _, err = harness.s.RepayPartialDebtInPriorityOrder(harness.store, abi.ChainEpoch(33), currentBalance)
+	require.NoError(t, err)
+
+	expectedDebt = big.Add(expectedDebt, fee)
+	assert.Equal(t, expectedDebt, harness.s.FeeDebt)
 }
 
 type stateHarness struct {
@@ -876,7 +935,7 @@ func constructStateHarness(t *testing.T, periodBoundary abi.ChainEpoch) *stateHa
 	emptyVestingFundsCid, err := store.Put(context.Background(), emptyVestingFunds)
 	require.NoError(t, err)
 
-	state, err := miner.ConstructState(infoCid, periodBoundary, emptyBitfieldCid, emptyArray, emptyMap, emptyDeadlinesCid,
+	state, err := miner.ConstructState(infoCid, periodBoundary, 0, emptyBitfieldCid, emptyArray, emptyMap, emptyDeadlinesCid,
 		emptyVestingFundsCid)
 	require.NoError(t, err)
 
@@ -923,6 +982,8 @@ func newSectorOnChainInfo(sectorNo abi.SectorNumber, sealed cid.Cid, weight big.
 		InitialPledge:         abi.NewTokenAmount(0),
 		ExpectedDayReward:     abi.NewTokenAmount(0),
 		ExpectedStoragePledge: abi.NewTokenAmount(0),
+		ReplacedSectorAge:     abi.ChainEpoch(0),
+		ReplacedDayReward:     big.Zero(),
 	}
 }
 

@@ -2,37 +2,33 @@ package multisig
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/go-state-types/cbor"
+	"github.com/filecoin-project/go-state-types/exitcode"
+	multisig0 "github.com/filecoin-project/specs-actors/actors/builtin/multisig"
+	"github.com/ipfs/go-cid"
 
-	"github.com/filecoin-project/specs-actors/actors/builtin"
-	"github.com/filecoin-project/specs-actors/actors/runtime"
-	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
-	. "github.com/filecoin-project/specs-actors/actors/util"
-	"github.com/filecoin-project/specs-actors/actors/util/adt"
+	"github.com/filecoin-project/specs-actors/v2/actors/builtin"
+	"github.com/filecoin-project/specs-actors/v2/actors/runtime"
+	. "github.com/filecoin-project/specs-actors/v2/actors/util"
+	"github.com/filecoin-project/specs-actors/v2/actors/util/adt"
 )
 
-type TxnID int64
+type TxnID = multisig0.TxnID
 
-func (t TxnID) Key() string {
-	// convert a TxnID to a HAMT key.
-	txnKey := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutVarint(txnKey, int64(t))
-	return string(txnKey[:n])
-}
-
-type Transaction struct {
-	To     addr.Address
-	Value  abi.TokenAmount
-	Method abi.MethodNum
-	Params []byte
-
-	// This address at index 0 is the transaction proposer, order of this slice must be preserved.
-	Approved []addr.Address
-}
+//type Transaction struct {
+//	To     addr.Address
+//	Value  abi.TokenAmount
+//	Method abi.MethodNum
+//	Params []byte
+//
+//	// This address at index 0 is the transaction proposer, order of this slice must be preserved.
+//	Approved []addr.Address
+//}
+type Transaction = multisig0.Transaction
 
 // Data for a BLAKE2B-256 to be attached to methods referencing proposals via TXIDs.
 // Ensures the existence of a cryptographic reference to the original proposal. Useful
@@ -40,13 +36,14 @@ type Transaction struct {
 //
 // Requester - The requesting multisig wallet member.
 // All other fields - From the "Transaction" struct.
-type ProposalHashData struct {
-	Requester addr.Address
-	To        addr.Address
-	Value     abi.TokenAmount
-	Method    abi.MethodNum
-	Params    []byte
-}
+//type ProposalHashData struct {
+//	Requester addr.Address
+//	To        addr.Address
+//	Value     abi.TokenAmount
+//	Method    abi.MethodNum
+//	Params    []byte
+//}
+type ProposalHashData = multisig0.ProposalHashData
 
 type Actor struct{}
 
@@ -60,22 +57,38 @@ func (a Actor) Exports() []interface{} {
 		6:                         a.RemoveSigner,
 		7:                         a.SwapSigner,
 		8:                         a.ChangeNumApprovalsThreshold,
+		9:                         a.LockBalance,
 	}
 }
 
-var _ runtime.Invokee = Actor{}
+func (a Actor) Code() cid.Cid {
+	return builtin.MultisigActorCodeID
+}
 
+func (a Actor) State() cbor.Er {
+	return new(State)
+}
+
+var _ runtime.VMActor = Actor{}
+
+// Changed since v0:
+// - Added StartEpoch
 type ConstructorParams struct {
 	Signers               []addr.Address
 	NumApprovalsThreshold uint64
 	UnlockDuration        abi.ChainEpoch
+	StartEpoch            abi.ChainEpoch
 }
 
-func (a Actor) Constructor(rt runtime.Runtime, params *ConstructorParams) *adt.EmptyValue {
+func (a Actor) Constructor(rt runtime.Runtime, params *ConstructorParams) *abi.EmptyValue {
 	rt.ValidateImmediateCallerIs(builtin.InitActorAddr)
 
 	if len(params.Signers) < 1 {
 		rt.Abortf(exitcode.ErrIllegalArgument, "must have at least one signer")
+	}
+
+	if len(params.Signers) > SignersMax {
+		rt.Abortf(exitcode.ErrIllegalArgument, "cannot add more than %d signers", SignersMax)
 	}
 
 	// resolve signer addresses and do not allow duplicate signers
@@ -116,36 +129,36 @@ func (a Actor) Constructor(rt runtime.Runtime, params *ConstructorParams) *adt.E
 	st.PendingTxns = pending
 	st.InitialBalance = abi.NewTokenAmount(0)
 	if params.UnlockDuration != 0 {
-		st.InitialBalance = rt.Message().ValueReceived()
-		st.UnlockDuration = params.UnlockDuration
-		st.StartEpoch = rt.CurrEpoch()
+		st.SetLocked(params.StartEpoch, params.UnlockDuration, rt.ValueReceived())
 	}
 
-	rt.State().Create(&st)
+	rt.StateCreate(&st)
 	return nil
 }
 
-type ProposeParams struct {
-	To     addr.Address
-	Value  abi.TokenAmount
-	Method abi.MethodNum
-	Params []byte
-}
+//type ProposeParams struct {
+//	To     addr.Address
+//	Value  abi.TokenAmount
+//	Method abi.MethodNum
+//	Params []byte
+//}
+type ProposeParams = multisig0.ProposeParams
 
-type ProposeReturn struct {
-	// TxnID is the ID of the proposed transaction
-	TxnID TxnID
-	// Applied indicates if the transaction was applied as opposed to proposed but not applied due to lack of approvals
-	Applied bool
-	// Code is the exitcode of the transaction, if Applied is false this field should be ignored.
-	Code exitcode.ExitCode
-	// Ret is the return vale of the transaction, if Applied is false this field should be ignored.
-	Ret []byte
-}
+//type ProposeReturn struct {
+//	// TxnID is the ID of the proposed transaction
+//	TxnID TxnID
+//	// Applied indicates if the transaction was applied as opposed to proposed but not applied due to lack of approvals
+//	Applied bool
+//	// Code is the exitcode of the transaction, if Applied is false this field should be ignored.
+//	Code exitcode.ExitCode
+//	// Ret is the return vale of the transaction, if Applied is false this field should be ignored.
+//	Ret []byte
+//}
+type ProposeReturn = multisig0.ProposeReturn
 
 func (a Actor) Propose(rt runtime.Runtime, params *ProposeParams) *ProposeReturn {
 	rt.ValidateImmediateCallerType(builtin.CallerTypesSignable...)
-	proposer := rt.Message().Caller()
+	proposer := rt.Caller()
 
 	if params.Value.Sign() < 0 {
 		rt.Abortf(exitcode.ErrIllegalArgument, "proposed value must be non-negative, was %v", params.Value)
@@ -154,7 +167,7 @@ func (a Actor) Propose(rt runtime.Runtime, params *ProposeParams) *ProposeReturn
 	var txnID TxnID
 	var st State
 	var txn *Transaction
-	rt.State().Transaction(&st, func() {
+	rt.StateTransaction(&st, func() {
 		if !isSigner(proposer, st.Signers) {
 			rt.Abortf(exitcode.ErrForbidden, "%s is not a signer", proposer)
 		}
@@ -192,29 +205,31 @@ func (a Actor) Propose(rt runtime.Runtime, params *ProposeParams) *ProposeReturn
 	}
 }
 
-type TxnIDParams struct {
-	ID TxnID
-	// Optional hash of proposal to ensure an operation can only apply to a
-	// specific proposal.
-	ProposalHash []byte
-}
+//type TxnIDParams struct {
+//	ID TxnID
+//	// Optional hash of proposal to ensure an operation can only apply to a
+//	// specific proposal.
+//	ProposalHash []byte
+//}
+type TxnIDParams = multisig0.TxnIDParams
 
-type ApproveReturn struct {
-	// Applied indicates if the transaction was applied as opposed to proposed but not applied due to lack of approvals
-	Applied bool
-	// Code is the exitcode of the transaction, if Applied is false this field should be ignored.
-	Code exitcode.ExitCode
-	// Ret is the return vale of the transaction, if Applied is false this field should be ignored.
-	Ret []byte
-}
+//type ApproveReturn struct {
+//	// Applied indicates if the transaction was applied as opposed to proposed but not applied due to lack of approvals
+//	Applied bool
+//	// Code is the exitcode of the transaction, if Applied is false this field should be ignored.
+//	Code exitcode.ExitCode
+//	// Ret is the return vale of the transaction, if Applied is false this field should be ignored.
+//	Ret []byte
+//}
+type ApproveReturn = multisig0.ApproveReturn
 
 func (a Actor) Approve(rt runtime.Runtime, params *TxnIDParams) *ApproveReturn {
 	rt.ValidateImmediateCallerType(builtin.CallerTypesSignable...)
-	callerAddr := rt.Message().Caller()
+	callerAddr := rt.Caller()
 
 	var st State
 	var txn *Transaction
-	rt.State().Transaction(&st, func() {
+	rt.StateTransaction(&st, func() {
 		callerIsSigner := isSigner(callerAddr, st.Signers)
 		if !callerIsSigner {
 			rt.Abortf(exitcode.ErrForbidden, "%s is not a signer", callerAddr)
@@ -241,12 +256,12 @@ func (a Actor) Approve(rt runtime.Runtime, params *TxnIDParams) *ApproveReturn {
 	}
 }
 
-func (a Actor) Cancel(rt runtime.Runtime, params *TxnIDParams) *adt.EmptyValue {
+func (a Actor) Cancel(rt runtime.Runtime, params *TxnIDParams) *abi.EmptyValue {
 	rt.ValidateImmediateCallerType(builtin.CallerTypesSignable...)
-	callerAddr := rt.Message().Caller()
+	callerAddr := rt.Caller()
 
 	var st State
-	rt.State().Transaction(&st, func() {
+	rt.StateTransaction(&st, func() {
 		callerIsSigner := isSigner(callerAddr, st.Signers)
 		if !callerIsSigner {
 			rt.Abortf(exitcode.ErrForbidden, "%s is not a signer", callerAddr)
@@ -265,7 +280,7 @@ func (a Actor) Cancel(rt runtime.Runtime, params *TxnIDParams) *adt.EmptyValue {
 		}
 
 		// confirm the hashes match
-		calculatedHash, err := ComputeProposalHash(&txn, rt.Syscalls().HashBlake2b)
+		calculatedHash, err := ComputeProposalHash(&txn, rt.HashBlake2b)
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to compute proposal hash for %v", params.ID)
 		if params.ProposalHash != nil && !bytes.Equal(params.ProposalHash, calculatedHash[:]) {
 			rt.Abortf(exitcode.ErrIllegalState, "hash does not match proposal params (ensure requester is an ID address)")
@@ -280,19 +295,24 @@ func (a Actor) Cancel(rt runtime.Runtime, params *TxnIDParams) *adt.EmptyValue {
 	return nil
 }
 
-type AddSignerParams struct {
-	Signer   addr.Address
-	Increase bool
-}
+//type AddSignerParams struct {
+//	Signer   addr.Address
+//	Increase bool
+//}
+type AddSignerParams = multisig0.AddSignerParams
 
-func (a Actor) AddSigner(rt runtime.Runtime, params *AddSignerParams) *adt.EmptyValue {
+func (a Actor) AddSigner(rt runtime.Runtime, params *AddSignerParams) *abi.EmptyValue {
 	// Can only be called by the multisig wallet itself.
-	rt.ValidateImmediateCallerIs(rt.Message().Receiver())
+	rt.ValidateImmediateCallerIs(rt.Receiver())
 	resolvedNewSigner, err := builtin.ResolveToIDAddr(rt, params.Signer)
 	builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to resolve address %v", params.Signer)
 
 	var st State
-	rt.State().Transaction(&st, func() {
+	rt.StateTransaction(&st, func() {
+		if len(st.Signers) >= SignersMax {
+			rt.Abortf(exitcode.ErrForbidden, "cannot add more than %d signers", SignersMax)
+		}
+
 		isSigner := isSigner(resolvedNewSigner, st.Signers)
 		if isSigner {
 			rt.Abortf(exitcode.ErrForbidden, "%s is already a signer", resolvedNewSigner)
@@ -306,19 +326,21 @@ func (a Actor) AddSigner(rt runtime.Runtime, params *AddSignerParams) *adt.Empty
 	return nil
 }
 
-type RemoveSignerParams struct {
-	Signer   addr.Address
-	Decrease bool
-}
+//type RemoveSignerParams struct {
+//	Signer   addr.Address
+//	Decrease bool
+//}
+type RemoveSignerParams = multisig0.RemoveSignerParams
 
-func (a Actor) RemoveSigner(rt runtime.Runtime, params *RemoveSignerParams) *adt.EmptyValue {
+func (a Actor) RemoveSigner(rt runtime.Runtime, params *RemoveSignerParams) *abi.EmptyValue {
 	// Can only be called by the multisig wallet itself.
-	rt.ValidateImmediateCallerIs(rt.Message().Receiver())
+	rt.ValidateImmediateCallerIs(rt.Receiver())
 	resolvedOldSigner, err := builtin.ResolveToIDAddr(rt, params.Signer)
 	builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to resolve address %v", params.Signer)
 
+	store := adt.AsStore(rt)
 	var st State
-	rt.State().Transaction(&st, func() {
+	rt.StateTransaction(&st, func() {
 		isSigner := isSigner(resolvedOldSigner, st.Signers)
 		if !isSigner {
 			rt.Abortf(exitcode.ErrForbidden, "%s is not a signer", resolvedOldSigner)
@@ -344,22 +366,30 @@ func (a Actor) RemoveSigner(rt runtime.Runtime, params *RemoveSignerParams) *adt
 		}
 
 		if params.Decrease {
+			if st.NumApprovalsThreshold < 2 {
+				rt.Abortf(exitcode.ErrIllegalArgument, "can't decrease approvals from %d to %d", st.NumApprovalsThreshold, st.NumApprovalsThreshold-1)
+			}
 			st.NumApprovalsThreshold = st.NumApprovalsThreshold - 1
 		}
+
+		err := st.PurgeApprovals(store, resolvedOldSigner)
+		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to purge approvals of removed signer")
+
 		st.Signers = newSigners
 	})
 
 	return nil
 }
 
-type SwapSignerParams struct {
-	From addr.Address
-	To   addr.Address
-}
+//type SwapSignerParams struct {
+//	From addr.Address
+//	To   addr.Address
+//}
+type SwapSignerParams = multisig0.SwapSignerParams
 
-func (a Actor) SwapSigner(rt runtime.Runtime, params *SwapSignerParams) *adt.EmptyValue {
+func (a Actor) SwapSigner(rt runtime.Runtime, params *SwapSignerParams) *abi.EmptyValue {
 	// Can only be called by the multisig wallet itself.
-	rt.ValidateImmediateCallerIs(rt.Message().Receiver())
+	rt.ValidateImmediateCallerIs(rt.Receiver())
 
 	fromResolved, err := builtin.ResolveToIDAddr(rt, params.From)
 	builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to resolve from address %v", params.From)
@@ -367,8 +397,9 @@ func (a Actor) SwapSigner(rt runtime.Runtime, params *SwapSignerParams) *adt.Emp
 	toResolved, err := builtin.ResolveToIDAddr(rt, params.To)
 	builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to resolve to address %v", params.To)
 
+	store := adt.AsStore(rt)
 	var st State
-	rt.State().Transaction(&st, func() {
+	rt.StateTransaction(&st, func() {
 		fromIsSigner := isSigner(fromResolved, st.Signers)
 		if !fromIsSigner {
 			rt.Abortf(exitcode.ErrForbidden, "from addr %s is not a signer", fromResolved)
@@ -387,21 +418,25 @@ func (a Actor) SwapSigner(rt runtime.Runtime, params *SwapSignerParams) *adt.Emp
 		}
 		newSigners = append(newSigners, toResolved)
 		st.Signers = newSigners
+
+		err := st.PurgeApprovals(store, fromResolved)
+		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to purge approvals of removed signer")
 	})
 
 	return nil
 }
 
-type ChangeNumApprovalsThresholdParams struct {
-	NewThreshold uint64
-}
+//type ChangeNumApprovalsThresholdParams struct {
+//	NewThreshold uint64
+//}
+type ChangeNumApprovalsThresholdParams = multisig0.ChangeNumApprovalsThresholdParams
 
-func (a Actor) ChangeNumApprovalsThreshold(rt runtime.Runtime, params *ChangeNumApprovalsThresholdParams) *adt.EmptyValue {
+func (a Actor) ChangeNumApprovalsThreshold(rt runtime.Runtime, params *ChangeNumApprovalsThresholdParams) *abi.EmptyValue {
 	// Can only be called by the multisig wallet itself.
-	rt.ValidateImmediateCallerIs(rt.Message().Receiver())
+	rt.ValidateImmediateCallerIs(rt.Receiver())
 
 	var st State
-	rt.State().Transaction(&st, func() {
+	rt.StateTransaction(&st, func() {
 		if params.NewThreshold == 0 || params.NewThreshold > uint64(len(st.Signers)) {
 			rt.Abortf(exitcode.ErrIllegalArgument, "New threshold value not supported")
 		}
@@ -411,8 +446,34 @@ func (a Actor) ChangeNumApprovalsThreshold(rt runtime.Runtime, params *ChangeNum
 	return nil
 }
 
+//type LockBalanceParams struct {
+//	StartEpoch abi.ChainEpoch
+//	UnlockDuration abi.ChainEpoch
+//	Amount abi.TokenAmount
+//}
+type LockBalanceParams = multisig0.LockBalanceParams
+
+func (a Actor) LockBalance(rt runtime.Runtime, params *LockBalanceParams) *abi.EmptyValue {
+	// Can only be called by the multisig wallet itself.
+	rt.ValidateImmediateCallerIs(rt.Receiver())
+
+	if params.UnlockDuration <= 0 {
+		// Note: Unlock duration of zero is workable, but rejected as ineffective, probably an error.
+		rt.Abortf(exitcode.ErrIllegalArgument, "unlock duration must be positive")
+	}
+
+	var st State
+	rt.StateTransaction(&st, func() {
+		if st.UnlockDuration != 0 {
+			rt.Abortf(exitcode.ErrForbidden, "modification of unlock disallowed")
+		}
+		st.SetLocked(params.StartEpoch, params.UnlockDuration, params.Amount)
+	})
+	return nil
+}
+
 func (a Actor) approveTransaction(rt runtime.Runtime, txnID TxnID, txn *Transaction) (bool, []byte, exitcode.ExitCode) {
-	caller := rt.Message().Caller()
+	caller := rt.Caller()
 
 	var st State
 	// abort duplicate approval
@@ -423,7 +484,7 @@ func (a Actor) approveTransaction(rt runtime.Runtime, txnID TxnID, txn *Transact
 	}
 
 	// add the caller to the list of approvers
-	rt.State().Transaction(&st, func() {
+	rt.StateTransaction(&st, func() {
 		ptx, err := adt.AsMap(adt.AsStore(rt), st.PendingTxns)
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to load pending transactions")
 
@@ -451,7 +512,7 @@ func getTransaction(rt runtime.Runtime, ptx *adt.Map, txnID TxnID, proposalHash 
 
 	// confirm the hashes match
 	if checkHash {
-		calculatedHash, err := ComputeProposalHash(&txn, rt.Syscalls().HashBlake2b)
+		calculatedHash, err := ComputeProposalHash(&txn, rt.HashBlake2b)
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to compute proposal hash for %v", txnID)
 		if proposalHash != nil && !bytes.Equal(proposalHash, calculatedHash[:]) {
 			rt.Abortf(exitcode.ErrIllegalArgument, "hash does not match proposal params (ensure requester is an ID address)")
@@ -462,7 +523,7 @@ func getTransaction(rt runtime.Runtime, ptx *adt.Map, txnID TxnID, proposalHash 
 }
 
 func executeTransactionIfApproved(rt runtime.Runtime, st State, txnID TxnID, txn *Transaction) (bool, []byte, exitcode.ExitCode) {
-	var out runtime.CBORBytes
+	var out builtin.CBORBytes
 	var code exitcode.ExitCode
 	applied := false
 
@@ -472,23 +533,18 @@ func executeTransactionIfApproved(rt runtime.Runtime, st State, txnID TxnID, txn
 			rt.Abortf(exitcode.ErrInsufficientFunds, "insufficient funds unlocked: %v", err)
 		}
 
-		var ret runtime.SendReturn
 		// A sufficient number of approvals have arrived and sufficient funds have been unlocked: relay the message and delete from pending queue.
-		ret, code = rt.Send(
+		code = rt.Send(
 			txn.To,
 			txn.Method,
-			runtime.CBORBytes(txn.Params),
+			builtin.CBORBytes(txn.Params),
 			txn.Value,
+			&out,
 		)
 		applied = true
 
-		// Pass the return value through uninterpreted with the expectation that serializing into a CBORBytes never fails
-		// since it just copies the bytes.
-		err := ret.Into(&out)
-		builtin.RequireNoErr(rt, err, exitcode.ErrSerialization, "failed to deserialize result")
-
 		// This could be rearranged to happen inside the first state transaction, before the send().
-		rt.State().Transaction(&st, func() {
+		rt.StateTransaction(&st, func() {
 			ptx, err := adt.AsMap(adt.AsStore(rt), st.PendingTxns)
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to load pending transactions")
 
@@ -500,6 +556,9 @@ func executeTransactionIfApproved(rt runtime.Runtime, st State, txnID TxnID, txn
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to flush pending transactions")
 		})
 	}
+
+	// Pass the return value through uninterpreted with the expectation that serializing into a CBORBytes never fails
+	// since it just copies the bytes.
 
 	return applied, out, code
 }
@@ -534,12 +593,4 @@ func ComputeProposalHash(txn *Transaction, hash func([]byte) [32]byte) ([]byte, 
 
 	hashResult := hash(data)
 	return hashResult[:], nil
-}
-
-func (phd *ProposalHashData) Serialize() ([]byte, error) {
-	buf := new(bytes.Buffer)
-	if err := phd.MarshalCBOR(buf); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
 }

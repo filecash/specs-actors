@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	goruntime "runtime"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -12,14 +13,19 @@ import (
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/go-state-types/cbor"
+	"github.com/filecoin-project/go-state-types/crypto"
+	"github.com/filecoin-project/go-state-types/exitcode"
+	"github.com/filecoin-project/go-state-types/network"
+	"github.com/filecoin-project/go-state-types/rt"
 	cid "github.com/ipfs/go-cid"
 	mh "github.com/multiformats/go-multihash"
 
-	"github.com/filecoin-project/specs-actors/actors/crypto"
-	"github.com/filecoin-project/specs-actors/actors/runtime"
-	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
-	"github.com/filecoin-project/specs-actors/actors/runtime/proof"
-	"github.com/filecoin-project/specs-actors/actors/util/adt"
+	"github.com/filecoin-project/specs-actors/v2/actors/builtin"
+	"github.com/filecoin-project/specs-actors/v2/actors/builtin/exported"
+	"github.com/filecoin-project/specs-actors/v2/actors/runtime"
+	"github.com/filecoin-project/specs-actors/v2/actors/runtime/proof"
+	"github.com/filecoin-project/specs-actors/v2/actors/util/adt"
 )
 
 // A mock runtime for unit testing of actors in isolation.
@@ -29,7 +35,7 @@ type Runtime struct {
 	// Execution context
 	ctx               context.Context
 	epoch             abi.ChainEpoch
-	networkVersion    runtime.NetworkVersion
+	networkVersion    network.Version
 	receiver          addr.Address
 	caller            addr.Address
 	callerType        cid.Cid
@@ -92,11 +98,11 @@ type expectedMessage struct {
 	// expectedMessage values
 	to     addr.Address
 	method abi.MethodNum
-	params runtime.CBORMarshaler
+	params cbor.Marshaler
 	value  abi.TokenAmount
 
 	// returns from applying expectedMessage
-	sendReturn runtime.SendReturn
+	sendReturn cbor.Er
 	exitCode   exitcode.ExitCode
 }
 
@@ -126,7 +132,7 @@ type expectVerifyPoSt struct {
 	result error
 }
 
-func (m *expectedMessage) Equal(to addr.Address, method abi.MethodNum, params runtime.CBORMarshaler, value abi.TokenAmount) bool {
+func (m *expectedMessage) Equal(to addr.Address, method abi.MethodNum, params cbor.Marshaler, value abi.TokenAmount) bool {
 	// avoid nil vs. zero/empty discrepancies that would disappear in serialization
 	paramBuf1 := new(bytes.Buffer)
 	if m.params != nil {
@@ -163,18 +169,13 @@ type expectVerifyConsensusFault struct {
 var _ runtime.Runtime = &Runtime{}
 var _ runtime.StateHandle = &Runtime{}
 var typeOfRuntimeInterface = reflect.TypeOf((*runtime.Runtime)(nil)).Elem()
-var typeOfCborUnmarshaler = reflect.TypeOf((*runtime.CBORUnmarshaler)(nil)).Elem()
-var typeOfCborMarshaler = reflect.TypeOf((*runtime.CBORMarshaler)(nil)).Elem()
+var typeOfCborUnmarshaler = reflect.TypeOf((*cbor.Unmarshaler)(nil)).Elem()
+var typeOfCborMarshaler = reflect.TypeOf((*cbor.Marshaler)(nil)).Elem()
 
 ///// Implementation of the runtime API /////
 
-func (rt *Runtime) NetworkVersion() runtime.NetworkVersion {
+func (rt *Runtime) NetworkVersion() network.Version {
 	return rt.networkVersion
-}
-
-func (rt *Runtime) Message() runtime.Message {
-	rt.requireInCall()
-	return rt
 }
 
 func (rt *Runtime) CurrEpoch() abi.ChainEpoch {
@@ -212,7 +213,7 @@ func (rt *Runtime) ValidateImmediateCallerIs(addrs ...addr.Address) {
 			return
 		}
 	}
-	rt.Abortf(exitcode.ErrForbidden, "caller address %v forbidden, allowed: %v", rt.caller, addrs)
+	rt.Abortf(exitcode.SysErrForbidden, "caller address %v forbidden, allowed: %v", rt.caller, addrs)
 }
 
 func (rt *Runtime) ValidateImmediateCallerType(types ...cid.Cid) {
@@ -236,7 +237,7 @@ func (rt *Runtime) ValidateImmediateCallerType(types ...cid.Cid) {
 			return
 		}
 	}
-	rt.Abortf(exitcode.ErrForbidden, "caller type %v forbidden, allowed: %v", rt.callerType, types)
+	rt.Abortf(exitcode.SysErrForbidden, "caller type %v forbidden, allowed: %v", rt.callerType, types)
 }
 
 func (rt *Runtime) CurrentBalance() abi.TokenAmount {
@@ -313,17 +314,7 @@ func (rt *Runtime) GetRandomnessFromTickets(tag crypto.DomainSeparationTag, epoc
 	return exp.out
 }
 
-func (rt *Runtime) State() runtime.StateHandle {
-	rt.requireInCall()
-	return rt
-}
-
-func (rt *Runtime) Store() runtime.Store {
-	// requireInCall omitted because it makes using this mock runtime as a store awkward.
-	return rt
-}
-
-func (rt *Runtime) Send(toAddr addr.Address, methodNum abi.MethodNum, params runtime.CBORMarshaler, value abi.TokenAmount) (runtime.SendReturn, exitcode.ExitCode) {
+func (rt *Runtime) Send(toAddr addr.Address, methodNum abi.MethodNum, params cbor.Marshaler, value abi.TokenAmount, out cbor.Er) exitcode.ExitCode {
 	rt.requireInCall()
 	if rt.inTransaction {
 		rt.Abortf(exitcode.SysErrorIllegalActor, "side-effect within transaction")
@@ -334,10 +325,23 @@ func (rt *Runtime) Send(toAddr addr.Address, methodNum abi.MethodNum, params run
 	exp := rt.expectSends[0]
 
 	if !exp.Equal(toAddr, methodNum, params, value) {
+		toName := "unknown"
+		toMeth := "unknown"
+		expToName := "unknown"
+		expToMeth := "unknown"
+		if code, ok := rt.GetActorCodeCID(toAddr); ok && builtin.IsBuiltinActor(code) {
+			toName = builtin.ActorNameByCode(code)
+			toMeth = getMethodName(code, methodNum)
+		}
+		if code, ok := rt.GetActorCodeCID(exp.to); ok && builtin.IsBuiltinActor(code) {
+			expToName = builtin.ActorNameByCode(code)
+			expToMeth = getMethodName(code, exp.method)
+		}
+
 		rt.failTestNow("unexpected send\n"+
-			"          to: %s method: %d value: %v params: %v\n"+
-			"Expected  to: %s method: %d value: %v params: %v",
-			toAddr, methodNum, value, params, exp.to, exp.method, exp.value, exp.params)
+			"          to: %s (%s) method: %d (%s) value: %v params: %v\n"+
+			"Expected  to: %s (%s) method: %d (%s) value: %v params: %v",
+			toAddr, toName, methodNum, toMeth, value, params, exp.to, expToName, exp.method, expToMeth, exp.value, exp.params)
 	}
 
 	if value.GreaterThan(rt.balance) {
@@ -349,7 +353,19 @@ func (rt *Runtime) Send(toAddr addr.Address, methodNum abi.MethodNum, params run
 		rt.expectSends = rt.expectSends[1:]
 		rt.balance = big.Sub(rt.balance, value)
 	}()
-	return exp.sendReturn, exp.exitCode
+
+	// populate the output argument
+	var buf bytes.Buffer
+	err := exp.sendReturn.MarshalCBOR(&buf)
+	if err != nil {
+		rt.failTestNow("error serializing expected send return: %v", err)
+	}
+	err = out.UnmarshalCBOR(&buf)
+	if err != nil {
+		rt.failTestNow("error deserializing send return bytes to output param: %v", err)
+	}
+
+	return exp.exitCode
 }
 
 func (rt *Runtime) NewActorAddress() addr.Address {
@@ -405,19 +421,14 @@ func (rt *Runtime) Abortf(errExitCode exitcode.ExitCode, msg string, args ...int
 	panic(abort{errExitCode, fmt.Sprintf(msg, args...)})
 }
 
-func (rt *Runtime) Syscalls() runtime.Syscalls {
-	rt.requireInCall()
-	return rt
-}
-
 func (rt *Runtime) Context() context.Context {
 	// requireInCall omitted because it makes using this mock runtime as a store awkward.
 	return rt.ctx
 }
 
-func (rt *Runtime) StartSpan(_ string) runtime.TraceSpan {
+func (rt *Runtime) StartSpan(_ string) func() {
 	rt.requireInCall()
-	return &TraceSpan{}
+	return func() {}
 }
 
 func (rt *Runtime) checkArgument(predicate bool, msg string, args ...interface{}) {
@@ -433,14 +444,14 @@ func (rt *Runtime) checkArgument(predicate bool, msg string, args ...interface{}
 func (rt *Runtime) get(c cid.Cid) ([]byte, bool) {
 	prefix := c.Prefix()
 	if prefix.Codec != cid.DagCBOR {
-		rt.Abortf(exitcode.SysErrSerialization, "tried to fetch a non-cbor object: %s", c)
+		rt.Abortf(exitcode.ErrSerialization, "tried to fetch a non-cbor object: %s", c)
 	}
 
 	var data []byte
 	if prefix.MhType == mh.IDENTITY {
 		decoded, err := mh.Decode(c.Hash())
 		if err != nil {
-			rt.Abortf(exitcode.SysErrSerialization, "failed to parse identity cid %s: %s", c, err)
+			rt.Abortf(exitcode.ErrSerialization, "failed to parse identity cid %s: %s", c, err)
 		}
 		data = decoded.Digest
 	} else if stored, found := rt.store[c]; found {
@@ -458,30 +469,30 @@ func (rt *Runtime) put(c cid.Cid, data []byte) {
 	}
 }
 
-func (rt *Runtime) Get(c cid.Cid, o runtime.CBORUnmarshaler) bool {
+func (rt *Runtime) StoreGet(c cid.Cid, o cbor.Unmarshaler) bool {
 	// requireInCall omitted because it makes using this mock runtime as a store awkward.
 	data, found := rt.get(c)
 	if found {
 		err := o.UnmarshalCBOR(bytes.NewReader(data))
 		if err != nil {
-			rt.Abortf(exitcode.SysErrSerialization, err.Error())
+			rt.Abortf(exitcode.ErrSerialization, err.Error())
 		}
 	}
 
 	return found
 }
 
-func (rt *Runtime) Put(o runtime.CBORMarshaler) cid.Cid {
+func (rt *Runtime) StorePut(o cbor.Marshaler) cid.Cid {
 	// requireInCall omitted because it makes using this mock runtime as a store awkward.
 	r := bytes.Buffer{}
 	err := o.MarshalCBOR(&r)
 	if err != nil {
-		rt.Abortf(exitcode.SysErrSerialization, err.Error())
+		rt.Abortf(exitcode.ErrSerialization, err.Error())
 	}
 	data := r.Bytes()
 	key, err := abi.CidBuilder.Sum(data)
 	if err != nil {
-		rt.Abortf(exitcode.SysErrSerialization, err.Error())
+		rt.Abortf(exitcode.ErrSerialization, err.Error())
 	}
 	rt.put(key, data)
 	return key
@@ -507,29 +518,29 @@ func (rt *Runtime) ValueReceived() abi.TokenAmount {
 
 ///// State handle implementation /////
 
-func (rt *Runtime) Create(obj runtime.CBORMarshaler) {
+func (rt *Runtime) StateCreate(obj cbor.Marshaler) {
 	if rt.state.Defined() {
 		rt.Abortf(exitcode.SysErrorIllegalActor, "state already constructed")
 	}
-	rt.state = rt.Store().Put(obj)
+	rt.state = rt.StorePut(obj)
 }
 
-func (rt *Runtime) Readonly(st runtime.CBORUnmarshaler) {
-	found := rt.Store().Get(rt.state, st)
+func (rt *Runtime) StateReadonly(st cbor.Unmarshaler) {
+	found := rt.StoreGet(rt.state, st)
 	if !found {
 		panic(fmt.Sprintf("actor state not found: %v", rt.state))
 	}
 }
 
-func (rt *Runtime) Transaction(st runtime.CBORer, f func()) {
+func (rt *Runtime) StateTransaction(st cbor.Er, f func()) {
 	if rt.inTransaction {
 		rt.Abortf(exitcode.SysErrorIllegalActor, "nested transaction")
 	}
-	rt.Readonly(st)
+	rt.StateReadonly(st)
 	rt.inTransaction = true
 	defer func() { rt.inTransaction = false }()
 	f()
-	rt.state = rt.Put(st)
+	rt.state = rt.StorePut(st)
 }
 
 ///// Syscalls implementation /////
@@ -686,7 +697,7 @@ func (rt *Runtime) VerifyConsensusFault(h1, h2, extra []byte) (*runtime.Consensu
 	return fault, err
 }
 
-func (rt *Runtime) Log(level runtime.LogLevel, msg string, args ...interface{}) {
+func (rt *Runtime) Log(level rt.LogLevel, msg string, args ...interface{}) {
 	rt.logs = append(rt.logs, fmt.Sprintf(msg, args...))
 }
 
@@ -718,7 +729,7 @@ func (rt *Runtime) StateRoot() cid.Cid {
 	return rt.state
 }
 
-func (rt *Runtime) GetState(o runtime.CBORUnmarshaler) {
+func (rt *Runtime) GetState(o cbor.Unmarshaler) {
 	data, found := rt.get(rt.state)
 	if !found {
 		rt.failTestNow("can't find state at root %v", rt.state) // something internal is messed up
@@ -757,7 +768,7 @@ func (rt *Runtime) SetReceived(amt abi.TokenAmount) {
 	rt.valueReceived = amt
 }
 
-func (rt *Runtime) SetNetworkVersion(v runtime.NetworkVersion) {
+func (rt *Runtime) SetNetworkVersion(v network.Version) {
 	rt.networkVersion = v
 }
 
@@ -765,8 +776,8 @@ func (rt *Runtime) SetEpoch(epoch abi.ChainEpoch) {
 	rt.epoch = epoch
 }
 
-func (rt *Runtime) ReplaceState(o runtime.CBORMarshaler) {
-	rt.state = rt.Store().Put(o)
+func (rt *Runtime) ReplaceState(o cbor.Marshaler) {
+	rt.state = rt.StorePut(o)
 }
 
 func (rt *Runtime) SetCirculatingSupply(amt abi.TokenAmount) {
@@ -815,17 +826,17 @@ func (rt *Runtime) ExpectGetRandomnessTickets(tag crypto.DomainSeparationTag, ep
 	})
 }
 
-func (rt *Runtime) ExpectSend(toAddr addr.Address, methodNum abi.MethodNum, params runtime.CBORMarshaler, value abi.TokenAmount, ret runtime.CBORMarshaler, exitCode exitcode.ExitCode) {
+func (rt *Runtime) ExpectSend(toAddr addr.Address, methodNum abi.MethodNum, params cbor.Marshaler, value abi.TokenAmount, ret cbor.Er, exitCode exitcode.ExitCode) {
 	// Adapt nil to Empty as convenience for the caller (otherwise we would require non-nil here).
 	if ret == nil {
-		ret = adt.Empty
+		ret = abi.Empty
 	}
 	rt.expectSends = append(rt.expectSends, &expectedMessage{
 		to:         toAddr,
 		method:     methodNum,
 		params:     params,
 		value:      value,
-		sendReturn: ReturnWrapper{ret},
+		sendReturn: ret,
 		exitCode:   exitCode,
 	})
 }
@@ -1046,7 +1057,7 @@ func (rt *Runtime) Call(method interface{}, params interface{}) interface{} {
 	if params != nil {
 		arg = reflect.ValueOf(params)
 	} else {
-		arg = reflect.ValueOf(adt.Empty)
+		arg = reflect.ValueOf(abi.Empty)
 	}
 	ret := meth.Call([]reflect.Value{reflect.ValueOf(rt), arg})
 	return ret[0].Interface()
@@ -1094,16 +1105,23 @@ func (rt *Runtime) ChargeGas(_ string, gas, _ int64) {
 	rt.gasCharged += gas
 }
 
-type ReturnWrapper struct {
-	V runtime.CBORMarshaler
-}
-
-func (r ReturnWrapper) Into(o runtime.CBORUnmarshaler) error {
-	b := bytes.Buffer{}
-	err := r.V.MarshalCBOR(&b)
-	if err != nil {
-		return err
+func getMethodName(code cid.Cid, num abi.MethodNum) string {
+	for _, actor := range exported.BuiltinActors() {
+		if actor.Code().Equals(code) {
+			exports := actor.Exports()
+			if len(exports) <= int(num) {
+				return "<invalid>"
+			}
+			meth := exports[num]
+			if meth == nil {
+				return "<invalid>"
+			}
+			name := goruntime.FuncForPC(reflect.ValueOf(meth).Pointer()).Name()
+			name = strings.TrimSuffix(name, "-fm")
+			lastDot := strings.LastIndexByte(name, '.')
+			name = name[lastDot+1:]
+			return name
+		}
 	}
-	err = o.UnmarshalCBOR(&b)
-	return err
+	return "<unknown actor>"
 }

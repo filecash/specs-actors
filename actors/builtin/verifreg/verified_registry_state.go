@@ -2,17 +2,13 @@ package verifreg
 
 import (
 	addr "github.com/filecoin-project/go-address"
-	abi "github.com/filecoin-project/go-state-types/abi"
-	big "github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/go-state-types/abi"
 	cid "github.com/ipfs/go-cid"
-
-	adt "github.com/filecoin-project/specs-actors/actors/util/adt"
 )
 
 // DataCap is an integer number of bytes.
 // We can introduce policy changes and replace this in the future.
 type DataCap = abi.StoragePower
-type AddrKey = adt.AddrKey
 
 type State struct {
 	// Root key holder multisig.
@@ -27,7 +23,7 @@ type State struct {
 	VerifiedClients cid.Cid // HAMT[addr.Address]DataCap
 }
 
-var MinVerifiedDealSize abi.StoragePower = big.NewInt(1 << 20) // PARAM_FINISH
+var MinVerifiedDealSize = abi.NewStoragePower(1 << 20)
 
 // rootKeyAddress comes from genesis.
 func ConstructState(emptyMapCid cid.Cid, rootKeyAddress addr.Address) *State {

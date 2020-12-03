@@ -10,18 +10,18 @@ import (
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/go-state-types/crypto"
+	"github.com/filecoin-project/go-state-types/exitcode"
 	"github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	cbg "github.com/whyrusleeping/cbor-gen"
 
-	"github.com/filecoin-project/specs-actors/actors/builtin"
-	. "github.com/filecoin-project/specs-actors/actors/builtin/paych"
-	"github.com/filecoin-project/specs-actors/actors/crypto"
-	"github.com/filecoin-project/specs-actors/actors/runtime"
-	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
-	adt "github.com/filecoin-project/specs-actors/actors/util/adt"
-	"github.com/filecoin-project/specs-actors/support/mock"
-	tutil "github.com/filecoin-project/specs-actors/support/testing"
+	"github.com/filecoin-project/specs-actors/v2/actors/builtin"
+	. "github.com/filecoin-project/specs-actors/v2/actors/builtin/paych"
+	"github.com/filecoin-project/specs-actors/v2/actors/util/adt"
+	"github.com/filecoin-project/specs-actors/v2/support/mock"
+	tutil "github.com/filecoin-project/specs-actors/v2/support/testing"
 )
 
 func TestExports(t *testing.T) {
@@ -46,6 +46,24 @@ func TestPaymentChannelActor_Constructor(t *testing.T) {
 		actor.constructAndVerify(t, rt, payerAddr, payeeAddr)
 	})
 
+	t.Run("creates a payment channel actor after resolving non-ID addresses to ID addresses", func(t *testing.T) {
+		payerAddr := tutil.NewIDAddr(t, 101)
+		payerNonId := tutil.NewBLSAddr(t, 102)
+
+		payeeAddr := tutil.NewIDAddr(t, 103)
+		payeeNonId := tutil.NewBLSAddr(t, 104)
+
+		builder := mock.NewBuilder(ctx, paychAddr).
+			WithCaller(callerAddr, builtin.InitActorCodeID).
+			WithActorType(payerAddr, builtin.AccountActorCodeID).
+			WithActorType(payeeAddr, builtin.AccountActorCodeID)
+		rt := builder.Build(t)
+		rt.AddIDAddress(payerNonId, payerAddr)
+		rt.AddIDAddress(payeeNonId, payeeAddr)
+
+		actor.constructAndVerify(t, rt, payerNonId, payeeNonId)
+	})
+
 	nonAccountCodeID := builtin.MultisigActorCodeID
 	testCases := []struct {
 		desc        string
@@ -67,18 +85,6 @@ func TestPaymentChannelActor_Constructor(t *testing.T) {
 			builtin.AccountActorCodeID,
 			payeeAddr,
 			exitcode.ErrForbidden,
-		}, {"fails if target cannot be resolved",
-			builtin.AccountActorCodeID,
-			tutil.NewSECP256K1Addr(t, "beach blanket babylon"),
-			builtin.AccountActorCodeID,
-			payeeAddr,
-			exitcode.ErrNotFound,
-		}, {"fails if sender cannot be resolved",
-			builtin.AccountActorCodeID,
-			payerAddr,
-			builtin.AccountActorCodeID,
-			tutil.NewSECP256K1Addr(t, "beach blanket babylon"),
-			exitcode.ErrNotFound,
 		},
 	}
 	for _, tc := range testCases {
@@ -96,13 +102,45 @@ func TestPaymentChannelActor_Constructor(t *testing.T) {
 		})
 	}
 
+	t.Run("fails if sender addr is not resolvable to ID address", func(t *testing.T) {
+		to := tutil.NewIDAddr(t, 101)
+		nonIdAddr := tutil.NewBLSAddr(t, 501)
+
+		rt := mock.NewBuilder(ctx, paychAddr).
+			WithCaller(callerAddr, builtin.InitActorCodeID).
+			WithActorType(to, builtin.AccountActorCodeID).Build(t)
+
+		rt.ExpectSend(nonIdAddr, builtin.MethodSend, nil, abi.NewTokenAmount(0), nil, exitcode.Ok)
+		rt.ExpectValidateCallerType(builtin.InitActorCodeID)
+		rt.ExpectAbort(exitcode.ErrIllegalState, func() {
+			rt.Call(actor.Constructor, &ConstructorParams{From: nonIdAddr, To: to})
+		})
+		rt.Verify()
+	})
+
+	t.Run("fails if target addr is not resolvable to ID address", func(t *testing.T) {
+		from := tutil.NewIDAddr(t, 5555)
+		nonIdAddr := tutil.NewBLSAddr(t, 501)
+
+		rt := mock.NewBuilder(ctx, paychAddr).
+			WithCaller(callerAddr, builtin.InitActorCodeID).
+			WithActorType(from, builtin.AccountActorCodeID).Build(t)
+
+		rt.ExpectSend(nonIdAddr, builtin.MethodSend, nil, abi.NewTokenAmount(0), nil, exitcode.Ok)
+		rt.ExpectValidateCallerType(builtin.InitActorCodeID)
+		rt.ExpectAbort(exitcode.ErrIllegalState, func() {
+			rt.Call(actor.Constructor, &ConstructorParams{From: from, To: nonIdAddr})
+		})
+		rt.Verify()
+	})
+
 	t.Run("fails if actor does not exist with: no code for address", func(t *testing.T) {
 		builder := mock.NewBuilder(ctx, paychAddr).
 			WithCaller(callerAddr, builtin.InitActorCodeID).
 			WithActorType(payerAddr, builtin.AccountActorCodeID)
 		rt := builder.Build(t)
 		rt.ExpectValidateCallerType(builtin.InitActorCodeID)
-		rt.ExpectAbort(exitcode.ErrForbidden, func() {
+		rt.ExpectAbort(exitcode.ErrIllegalArgument, func() {
 			rt.Call(actor.Constructor, &ConstructorParams{To: paychAddr})
 		})
 	})
@@ -111,6 +149,7 @@ func TestPaymentChannelActor_Constructor(t *testing.T) {
 func TestPaymentChannelActor_CreateLane(t *testing.T) {
 	ctx := context.Background()
 	initActorAddr := tutil.NewIDAddr(t, 100)
+	paychNonId := tutil.NewBLSAddr(t, 201)
 	paychAddr := tutil.NewIDAddr(t, 101)
 	payerAddr := tutil.NewIDAddr(t, 102)
 	payeeAddr := tutil.NewIDAddr(t, 103)
@@ -148,6 +187,14 @@ func TestPaymentChannelActor_CreateLane(t *testing.T) {
 			amt: 1, paymentChannel: tutil.NewIDAddr(t, 210), epoch: 1, tlmin: 1, tlmax: 0,
 			sig: sig, verifySig: true,
 			expExitCode: exitcode.ErrIllegalArgument},
+		{desc: "fails if address on the signed voucher cannot be resolved to ID address", targetCode: builtin.AccountActorCodeID,
+			amt: 1, paymentChannel: tutil.NewBLSAddr(t, 1), epoch: 1, tlmin: 1, tlmax: 0,
+			sig: sig, verifySig: true,
+			expExitCode: exitcode.ErrIllegalArgument},
+		{desc: "succeeds if address on the signed voucher can be resolved to channel ID address", targetCode: builtin.AccountActorCodeID,
+			amt: 1, paymentChannel: paychNonId, epoch: 1, tlmin: 1, tlmax: 0,
+			sig: sig, verifySig: true,
+			expExitCode: exitcode.Ok},
 		{desc: "fails if balance too low", targetCode: builtin.AccountActorCodeID,
 			amt: 10, paymentChannel: paychAddr, epoch: 1, tlmin: 1, tlmax: 0,
 			sig: sig, verifySig: true,
@@ -192,6 +239,7 @@ func TestPaymentChannelActor_CreateLane(t *testing.T) {
 				WithHasher(hasher)
 
 			rt := builder.Build(t)
+			rt.AddIDAddress(paychNonId, paychAddr)
 			actor.constructAndVerify(t, rt, payerAddr, payeeAddr)
 
 			sv := SignedVoucher{
@@ -511,13 +559,13 @@ func TestActor_UpdateChannelStateMergeFailure(t *testing.T) {
 
 func TestActor_UpdateChannelStateExtra(t *testing.T) {
 	mnum := builtin.MethodsPaych.UpdateChannelState
-	fakeParams := runtime.CBORBytes([]byte{1, 2, 3, 4})
-	expSendParams := &PaymentVerifyParams{fakeParams, nil}
+	fakeParams := cbg.CborBoolTrue
+	expSendParams := &cbg.Deferred{Raw: fakeParams}
 	otherAddr := tutil.NewIDAddr(t, 104)
 	ex := &ModVerifyParams{
 		Actor:  otherAddr,
 		Method: mnum,
-		Data:   fakeParams,
+		Data: fakeParams,
 	}
 
 	t.Run("Succeeds if extra call succeeds", func(t *testing.T) {
@@ -622,7 +670,6 @@ func TestActor_UpdateChannelStateSecretPreimage(t *testing.T) {
 		ucp := &UpdateChannelStateParams{
 			Sv:     *sv,
 			Secret: []byte("Profesr"),
-			Proof:  nil,
 		}
 		ucp.Sv.SecretPreimage = []byte("ProfesrXXXXXXXXXXXXXXXXXXXXXXXXX")
 		rt.ExpectValidateCallerAddr(st.From, st.To)
@@ -638,7 +685,6 @@ func TestActor_UpdateChannelStateSecretPreimage(t *testing.T) {
 		ucp := &UpdateChannelStateParams{
 			Sv:     *sv,
 			Secret: []byte("Profesr"),
-			Proof:  nil,
 		}
 		ucp.Sv.SecretPreimage = append([]byte("Magneto"), make([]byte, 25)...)
 		rt.ExpectValidateCallerAddr(st.From, st.To)
@@ -713,6 +759,27 @@ func TestActor_Settle(t *testing.T) {
 		// SettlingAt should = MinSettleHeight, not epoch + SettleDelay.
 		rt.GetState(&newSt)
 		assert.Equal(t, ucp.Sv.MinSettleHeight, newSt.SettlingAt)
+	})
+
+	t.Run("Voucher invalid after settling", func(t *testing.T) {
+		rt, actor, sv := requireCreateChannelWithLanes(t, context.Background(), 1)
+		rt.SetEpoch(ep)
+		var st State
+		rt.GetState(&st)
+
+		rt.SetCaller(st.From, builtin.AccountActorCodeID)
+		rt.ExpectValidateCallerAddr(st.From, st.To)
+		rt.Call(actor.Settle, nil)
+
+		rt.GetState(&st)
+		rt.SetEpoch(st.SettlingAt + 40)
+		ucp := &UpdateChannelStateParams{Sv: *sv}
+		rt.ExpectValidateCallerAddr(st.From, st.To)
+		rt.ExpectVerifySignature(*ucp.Sv.Signature, actor.payee, voucherBytes(t, &ucp.Sv), nil)
+		rt.ExpectAbort(ErrChannelStateUpdateAfterSettled, func() {
+			rt.Call(actor.UpdateChannelState, ucp)
+		})
+
 	})
 }
 
@@ -862,7 +929,14 @@ func (h *pcActorHarness) constructAndVerify(t *testing.T, rt *mock.Runtime, send
 	ret := rt.Call(h.Actor.Constructor, params)
 	assert.Nil(h.t, ret)
 	rt.Verify()
-	verifyInitialState(t, rt, sender, receiver)
+
+	senderId, ok := rt.GetIdAddr(sender)
+	require.True(h.t, ok)
+
+	receiverId, ok := rt.GetIdAddr(receiver)
+	require.True(h.t, ok)
+
+	verifyInitialState(t, rt, senderId, receiverId)
 }
 
 func verifyInitialState(t *testing.T, rt *mock.Runtime, sender, receiver addr.Address) {

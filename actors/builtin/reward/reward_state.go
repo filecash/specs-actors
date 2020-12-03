@@ -1,10 +1,10 @@
 package reward
 
 import (
-	abi "github.com/filecoin-project/go-state-types/abi"
-	big "github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/go-state-types/big"
 
-	"github.com/filecoin-project/specs-actors/actors/util/smoothing"
+	"github.com/filecoin-project/specs-actors/v2/actors/util/smoothing"
 )
 
 // A quantity of space * time (in byte-epochs) representing power committed to the network for some duration.
@@ -20,12 +20,14 @@ var InitialRewardPositionEstimate = big.MustFromString(InitialRewardPositionEsti
 // https://www.wolframalpha.com/input/?i=IntegerPart%5B%28Exp%5B-Log%5B2%5D+%2F+%286+*+%281+year+%2F+30+seconds%29%29%5D+-+1%29+*+10%5E18%5D
 var InitialRewardVelocityEstimate = abi.NewTokenAmount(-109897758509)
 
+// Changed since v0:
+// - ThisEpochRewardSmoothed is not a pointer
 type State struct {
 	// CumsumBaseline is a target CumsumRealized needs to reach for EffectiveNetworkTime to increase
 	// CumsumBaseline and CumsumRealized are expressed in byte-epochs.
 	CumsumBaseline Spacetime
 
-	// CumsumRealized is cumulative sum of network power capped by BalinePower(epoch)
+	// CumsumRealized is cumulative sum of network power capped by BaselinePower(epoch)
 	CumsumRealized Spacetime
 
 	// EffectiveNetworkTime is ceiling of real effective network time `theta` based on
@@ -42,7 +44,7 @@ type State struct {
 	// This value is recomputed every non-null epoch and used in the next non-null epoch.
 	ThisEpochReward abi.TokenAmount
 	// Smoothed ThisEpochReward
-	ThisEpochRewardSmoothed *smoothing.FilterEstimate
+	ThisEpochRewardSmoothed smoothing.FilterEstimate
 
 	// The baseline power the network is targeting at st.Epoch
 	ThisEpochBaselinePower abi.StoragePower
@@ -50,8 +52,16 @@ type State struct {
 	// Epoch tracks for which epoch the Reward was computed
 	Epoch abi.ChainEpoch
 
-	// TotalMined tracks the total FIL awared to block miners
-	TotalMined abi.TokenAmount
+	// TotalStoragePowerReward tracks the total FIL awarded to block miners
+	TotalStoragePowerReward abi.TokenAmount
+
+	// Simple and Baseline totals are constants used for computing rewards.
+	// They are on chain because of a historical fix resetting baseline value
+	// in a way that depended on the history leading immediately up to the
+	// migration fixing the value.  These values can be moved from state back
+	// into a code constant in a subsequent upgrade.
+	SimpleTotal   abi.TokenAmount
+	BaselineTotal abi.TokenAmount
 }
 
 func ConstructState(currRealizedPower abi.StoragePower) *State {
@@ -66,7 +76,10 @@ func ConstructState(currRealizedPower abi.StoragePower) *State {
 		Epoch:                  -1,
 
 		ThisEpochRewardSmoothed: smoothing.NewEstimate(InitialRewardPositionEstimate, InitialRewardVelocityEstimate),
-		TotalMined:              big.Zero(),
+		TotalStoragePowerReward: big.Zero(),
+
+		SimpleTotal:   DefaultSimpleTotal,
+		BaselineTotal: DefaultBaselineTotal,
 	}
 
 	st.updateToNextEpochWithReward(currRealizedPower)
@@ -92,12 +105,11 @@ func (st *State) updateToNextEpoch(currRealizedPower abi.StoragePower) {
 // Takes in a current realized power for a reward epoch and computes
 // and updates reward state to track reward for the next epoch
 func (st *State) updateToNextEpochWithReward(currRealizedPower abi.StoragePower) {
-	prevRewardTheta := computeRTheta(st.EffectiveNetworkTime, st.EffectiveBaselinePower, st.CumsumRealized, st.CumsumBaseline)
+	prevRewardTheta := ComputeRTheta(st.EffectiveNetworkTime, st.EffectiveBaselinePower, st.CumsumRealized, st.CumsumBaseline)
 	st.updateToNextEpoch(currRealizedPower)
-	currRewardTheta := computeRTheta(st.EffectiveNetworkTime, st.EffectiveBaselinePower, st.CumsumRealized, st.CumsumBaseline)
+	currRewardTheta := ComputeRTheta(st.EffectiveNetworkTime, st.EffectiveBaselinePower, st.CumsumRealized, st.CumsumBaseline)
 
-	st.ThisEpochReward = computeReward(st.Epoch, prevRewardTheta, currRewardTheta)
-
+	st.ThisEpochReward = computeReward(st.Epoch, prevRewardTheta, currRewardTheta, st.SimpleTotal, st.BaselineTotal)
 }
 
 func (st *State) updateSmoothedEstimates(delta abi.ChainEpoch) {

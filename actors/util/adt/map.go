@@ -2,15 +2,15 @@ package adt
 
 import (
 	"bytes"
+	"crypto/sha256"
 
+	hamt "github.com/filecoin-project/go-hamt-ipld/v2"
+	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/go-state-types/cbor"
 	cid "github.com/ipfs/go-cid"
-	hamt "github.com/ipfs/go-hamt-ipld"
-	"github.com/minio/sha256-simd"
 	errors "github.com/pkg/errors"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	"golang.org/x/xerrors"
-
-	runtime "github.com/filecoin-project/specs-actors/actors/runtime"
 )
 
 // Branching factor of the HAMT.
@@ -74,7 +74,7 @@ func (m *Map) Root() (cid.Cid, error) {
 }
 
 // Put adds value `v` with key `k` to the hamt store.
-func (m *Map) Put(k Keyer, v runtime.CBORMarshaler) error {
+func (m *Map) Put(k abi.Keyer, v cbor.Marshaler) error {
 	if err := m.root.Set(m.store.Context(), k.Key(), v); err != nil {
 		return errors.Wrapf(err, "map put failed set in node %v with key %v value %v", m.lastCid, k.Key(), v)
 	}
@@ -82,7 +82,7 @@ func (m *Map) Put(k Keyer, v runtime.CBORMarshaler) error {
 }
 
 // Get puts the value at `k` into `out`.
-func (m *Map) Get(k Keyer, out runtime.CBORUnmarshaler) (bool, error) {
+func (m *Map) Get(k abi.Keyer, out cbor.Unmarshaler) (bool, error) {
 	if err := m.root.Find(m.store.Context(), k.Key(), out); err != nil {
 		if err == hamt.ErrNotFound {
 			return false, nil
@@ -92,8 +92,19 @@ func (m *Map) Get(k Keyer, out runtime.CBORUnmarshaler) (bool, error) {
 	return true, nil
 }
 
+// Has checks for the existance of a key without deserializing its value.
+func (m *Map) Has(k abi.Keyer) (bool, error) {
+	if _, err := m.root.FindRaw(m.store.Context(), k.Key()); err != nil {
+		if err == hamt.ErrNotFound {
+			return false, nil
+		}
+		return false, errors.Wrapf(err, "map get failed find in node %v with key %v", m.lastCid, k.Key())
+	}
+	return true, nil
+}
+
 // Delete removes the value at `k` from the hamt store.
-func (m *Map) Delete(k Keyer) error {
+func (m *Map) Delete(k abi.Keyer) error {
 	if err := m.root.Delete(m.store.Context(), k.Key()); err != nil {
 		return errors.Wrapf(err, "map delete failed in node %v key %v", m.root, k.Key())
 	}
@@ -105,7 +116,7 @@ func (m *Map) Delete(k Keyer) error {
 // calling a function with the corresponding key.
 // Iteration halts if the function returns an error.
 // If the output parameter is nil, deserialization is skipped.
-func (m *Map) ForEach(out runtime.CBORUnmarshaler, fn func(key string) error) error {
+func (m *Map) ForEach(out cbor.Unmarshaler, fn func(key string) error) error {
 	return m.root.ForEach(m.store.Context(), func(k string, val interface{}) error {
 		if out != nil {
 			// Why doesn't hamt.ForEach() just return the value as bytes?

@@ -3,14 +3,14 @@ package market
 import (
 	"bytes"
 
-	abi "github.com/filecoin-project/go-state-types/abi"
-	big "github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/go-state-types/big"
+	"github.com/filecoin-project/go-state-types/exitcode"
 	"github.com/ipfs/go-cid"
 	xerrors "golang.org/x/xerrors"
 
-	exitcode "github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
-	. "github.com/filecoin-project/specs-actors/actors/util"
-	"github.com/filecoin-project/specs-actors/actors/util/adt"
+	. "github.com/filecoin-project/specs-actors/v2/actors/util"
+	"github.com/filecoin-project/specs-actors/v2/actors/util/adt"
 )
 
 const epochUndefined = abi.ChainEpoch(-1)
@@ -166,7 +166,7 @@ func (m *marketStateMutation) processDealInitTimedOut(rt Runtime, deal *DealProp
 		rt.Abortf(exitcode.ErrIllegalState, "failure unlocking client collateral: %s", err)
 	}
 
-	amountSlashed := collateralPenaltyForDealActivationMissed(deal.ProviderCollateral)
+	amountSlashed := CollateralPenaltyForDealActivationMissed(deal.ProviderCollateral)
 	amountRemaining := big.Sub(deal.ProviderBalanceRequirement(), amountSlashed)
 
 	if err := m.slashBalance(deal.Provider, amountSlashed, ProviderCollateral); err != nil {
@@ -212,7 +212,7 @@ func dealProposalIsInternallyValid(rt Runtime, proposal ClientDealProposal) erro
 	if err != nil {
 		return xerrors.Errorf("proposal signature verification failed to marshal proposal: %w", err)
 	}
-	err = rt.Syscalls().VerifySignature(proposal.ClientSignature, proposal.Proposal.Client, buf.Bytes())
+	err = rt.VerifySignature(proposal.ClientSignature, proposal.Proposal.Client, buf.Bytes())
 	if err != nil {
 		return xerrors.Errorf("signature proposal invalid: %w", err)
 	}

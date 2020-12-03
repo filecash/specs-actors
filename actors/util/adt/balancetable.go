@@ -2,11 +2,10 @@ package adt
 
 import (
 	addr "github.com/filecoin-project/go-address"
-	cid "github.com/ipfs/go-cid"
-	"golang.org/x/xerrors"
-
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
+	cid "github.com/ipfs/go-cid"
+	"golang.org/x/xerrors"
 )
 
 // A specialization of a map of addresses to (positive) token amounts.
@@ -34,7 +33,7 @@ func (t *BalanceTable) Root() (cid.Cid, error) {
 // Gets the balance for a key, which is zero if they key has never been added to.
 func (t *BalanceTable) Get(key addr.Address) (abi.TokenAmount, error) {
 	var value abi.TokenAmount
-	found, err := (*Map)(t).Get(AddrKey(key), &value)
+	found, err := (*Map)(t).Get(abi.AddrKey(key), &value)
 	if !found || err != nil {
 		value = big.Zero()
 	}
@@ -53,9 +52,9 @@ func (t *BalanceTable) Add(key addr.Address, value abi.TokenAmount) error {
 	if sign < 0 {
 		return xerrors.Errorf("adding %v to balance %v would give negative: %v", value, prev, sum)
 	} else if sign == 0 && !prev.IsZero() {
-		return (*Map)(t).Delete(AddrKey(key))
+		return (*Map)(t).Delete(abi.AddrKey(key))
 	}
-	return (*Map)(t).Put(AddrKey(key), &sum)
+	return (*Map)(t).Put(abi.AddrKey(key), &sum)
 }
 
 // Subtracts up to the specified amount from a balance, without reducing the balance below some minimum.

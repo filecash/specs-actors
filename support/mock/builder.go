@@ -6,6 +6,7 @@ import (
 
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/go-state-types/network"
 	"github.com/ipfs/go-cid"
 	"github.com/minio/blake2b-simd"
 )
@@ -20,6 +21,7 @@ func NewBuilder(ctx context.Context, receiver addr.Address) *RuntimeBuilder {
 	m := &Runtime{
 		ctx:               ctx,
 		epoch:             0,
+		networkVersion:    network.VersionMax,
 		receiver:          receiver,
 		caller:            addr.Address{},
 		callerType:        cid.Undef,
