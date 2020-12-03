@@ -8,11 +8,10 @@ import (
 	"github.com/filecoin-project/go-address"
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
-	"github.com/filecoin-project/go-state-types/crypto"
-	"github.com/filecoin-project/go-state-types/exitcode"
-	"github.com/filecoin-project/go-state-types/network"
 	cid "github.com/ipfs/go-cid"
 
+	"github.com/filecoin-project/specs-actors/actors/crypto"
+	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 	"github.com/filecoin-project/specs-actors/actors/runtime/proof"
 )
 
@@ -33,11 +32,20 @@ const (
 	ERROR
 )
 
+// Enumeration of network upgrades where actor behaviour can change (without necessarily
+// vendoring and versioning the whole actor codebase).
+type NetworkVersion uint
+
+const (
+	NetworkVersion0 = NetworkVersion(iota) // specs-actors v0.9.3
+	NetworkVersion1                        // specs-actors v0.9.?
+)
+
 // Runtime is the VM's internal runtime object.
 // this is everything that is accessible to actors, beyond parameters.
 type Runtime interface {
 	// The network protocol version number at the current epoch.
-	NetworkVersion() network.Version
+	NetworkVersion() NetworkVersion
 
 	// Information related to the current message being executed.
 	// When an actor invokes a method on another actor as a sub-call, these values reflect
@@ -96,7 +104,7 @@ type Runtime interface {
 	// Sends a message to another actor, returning the exit code and return value envelope.
 	// If the invoked method does not return successfully, its state changes (and that of any messages it sent in turn)
 	// will be rolled back.
-	// The result is never a bare nil, but may be (a wrapper of) abi.Empty.
+	// The result is never a bare nil, but may be (a wrapper of) adt.Empty.
 	Send(toAddr addr.Address, methodNum abi.MethodNum, params CBORMarshaler, value abi.TokenAmount) (SendReturn, exitcode.ExitCode)
 
 	// Halts execution upon an error from which the receiver cannot recover. The caller will receive the exitcode and

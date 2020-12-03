@@ -10,8 +10,6 @@ import (
 	"github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/go-state-types/crypto"
-	"github.com/filecoin-project/go-state-types/exitcode"
 	"github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +21,9 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/builtin/power"
 	"github.com/filecoin-project/specs-actors/actors/builtin/reward"
 	"github.com/filecoin-project/specs-actors/actors/builtin/verifreg"
+	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-actors/actors/runtime"
+	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 	"github.com/filecoin-project/specs-actors/support/mock"
 	tutil "github.com/filecoin-project/specs-actors/support/testing"
@@ -74,7 +74,7 @@ func TestMarketActor(t *testing.T) {
 
 		rt.ExpectValidateCallerAddr(builtin.SystemActorAddr)
 
-		ret := rt.Call(actor.Constructor, nil).(*abi.EmptyValue)
+		ret := rt.Call(actor.Constructor, nil).(*adt.EmptyValue)
 		assert.Nil(t, ret)
 		rt.Verify()
 
@@ -2029,7 +2029,7 @@ func TestCronTickDealSlashing(t *testing.T) {
 					rt.ExpectAssertionFailure(tc.assertionMsg, func() {
 						rt.ExpectValidateCallerAddr(builtin.CronActorAddr)
 						rt.SetCaller(builtin.CronActorAddr, builtin.CronActorCodeID)
-						param := abi.EmptyValue{}
+						param := adt.EmptyValue{}
 						rt.Call(actor.CronTick, &param)
 						rt.Verify()
 					})
@@ -2644,7 +2644,7 @@ func (h *marketActorTestHarness) cronTickAndAssertBalances(rt *mock.Runtime, cli
 func (h *marketActorTestHarness) cronTick(rt *mock.Runtime) {
 	rt.ExpectValidateCallerAddr(builtin.CronActorAddr)
 	rt.SetCaller(builtin.CronActorAddr, builtin.CronActorCodeID)
-	param := abi.EmptyValue{}
+	param := adt.EmptyValue{}
 
 	rt.Call(h.CronTick, &param)
 	rt.Verify()

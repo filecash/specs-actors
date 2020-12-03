@@ -10,10 +10,6 @@ import (
 	"github.com/filecoin-project/go-bitfield"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/go-state-types/crypto"
-	"github.com/filecoin-project/go-state-types/dline"
-	"github.com/filecoin-project/go-state-types/exitcode"
-	"github.com/filecoin-project/go-state-types/network"
 	cid "github.com/ipfs/go-cid"
 	cbg "github.com/whyrusleeping/cbor-gen"
 	"golang.org/x/xerrors"
@@ -22,7 +18,9 @@ import (
 	"github.com/filecoin-project/specs-actors/actors/builtin/market"
 	"github.com/filecoin-project/specs-actors/actors/builtin/power"
 	"github.com/filecoin-project/specs-actors/actors/builtin/reward"
+	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-actors/actors/runtime"
+	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 	"github.com/filecoin-project/specs-actors/actors/runtime/proof"
 	. "github.com/filecoin-project/specs-actors/actors/util"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
@@ -86,7 +84,7 @@ var _ runtime.Invokee = Actor{}
 // between the two, the construction parameters are defined in the power actor.
 type ConstructorParams = power.MinerConstructorParams
 
-func (a Actor) Constructor(rt Runtime, params *ConstructorParams) *abi.EmptyValue {
+func (a Actor) Constructor(rt Runtime, params *ConstructorParams) *adt.EmptyValue {
 	rt.ValidateImmediateCallerIs(builtin.InitActorAddr)
 
 	_, ok := SupportedProofTypes[params.SealProofType]
@@ -154,7 +152,7 @@ type GetControlAddressesReturn struct {
 	ControlAddrs []addr.Address
 }
 
-func (a Actor) ControlAddresses(rt Runtime, _ *abi.EmptyValue) *GetControlAddressesReturn {
+func (a Actor) ControlAddresses(rt Runtime, _ *adt.EmptyValue) *GetControlAddressesReturn {
 	rt.ValidateImmediateCallerAcceptAny()
 	var st State
 	rt.State().Readonly(&st)
@@ -174,7 +172,7 @@ type ChangeWorkerAddressParams struct {
 // ChangeWorkerAddress will ALWAYS overwrite the existing control addresses with the control addresses passed in the params.
 // If a nil addresses slice is passed, the control addresses will be cleared.
 // A worker change will be scheduled if the worker passed in the params is different from the existing worker.
-func (a Actor) ChangeWorkerAddress(rt Runtime, params *ChangeWorkerAddressParams) *abi.EmptyValue {
+func (a Actor) ChangeWorkerAddress(rt Runtime, params *ChangeWorkerAddressParams) *adt.EmptyValue {
 	var effectiveEpoch abi.ChainEpoch
 
 	newWorker := resolveWorkerAddress(rt, params.NewWorker)
@@ -232,7 +230,7 @@ type ChangePeerIDParams struct {
 	NewID abi.PeerID
 }
 
-func (a Actor) ChangePeerID(rt Runtime, params *ChangePeerIDParams) *abi.EmptyValue {
+func (a Actor) ChangePeerID(rt Runtime, params *ChangePeerIDParams) *adt.EmptyValue {
 	// TODO: Consider limiting the maximum number of bytes used by the peer ID on-chain.
 	// https://github.com/filecoin-project/specs-actors/issues/712
 	var st State
@@ -252,7 +250,7 @@ type ChangeMultiaddrsParams struct {
 	NewMultiaddrs []abi.Multiaddrs
 }
 
-func (a Actor) ChangeMultiaddrs(rt Runtime, params *ChangeMultiaddrsParams) *abi.EmptyValue {
+func (a Actor) ChangeMultiaddrs(rt Runtime, params *ChangeMultiaddrsParams) *adt.EmptyValue {
 	// TODO: Consider limiting the maximum number of bytes used by multiaddrs on-chain.
 	// https://github.com/filecoin-project/specs-actors/issues/712
 	var st State
@@ -295,7 +293,7 @@ type SubmitWindowedPoStParams struct {
 }
 
 // Invoked by miner's worker address to submit their fallback post
-func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) *abi.EmptyValue {
+func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) *adt.EmptyValue {
 	currEpoch := rt.CurrEpoch()
 	store := adt.AsStore(rt)
 	var st State
@@ -369,7 +367,7 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 		// If proof verification fails, the this deadline MUST NOT be saved and this function should
 		// be aborted.
 		faultExpiration := currDeadline.Last() + FaultMaxAge
-		postResult, err = deadline.RecordProvenSectors(store, sectors, info.SectorSize, QuantSpecForDeadline(currDeadline), faultExpiration, params.Partitions)
+		postResult, err = deadline.RecordProvenSectors(store, sectors, info.SectorSize, currDeadline.QuantSpec(), faultExpiration, params.Partitions)
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to process post submission for deadline %d", params.Deadline)
 
 		// Validate proofs
@@ -395,12 +393,12 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 		undeclaredPenaltyPower := postResult.PenaltyPower()
 		undeclaredPenaltyTarget := PledgePenaltyForUndeclaredFault(
 			rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, undeclaredPenaltyPower.QA,
-			rt.NetworkVersion(), rt.CurrEpoch(),
+			rt.NetworkVersion(),
 		)
 		// Subtract the "ongoing" fault fee from the amount charged now, since it will be charged at
 		// the end-of-deadline cron.
 		undeclaredPenaltyTarget = big.Sub(undeclaredPenaltyTarget, PledgePenaltyForDeclaredFault(
-			rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, undeclaredPenaltyPower.QA, rt.CurrEpoch(),
+			rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, undeclaredPenaltyPower.QA,
 		))
 
 		// Penalize recoveries as declared faults (a lower fee than the undeclared, above).
@@ -408,7 +406,7 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 		// penalize recovered sectors here because they won't be penalized by the end-of-deadline cron for the
 		// immediately-prior faulty period.
 		declaredPenaltyTarget := PledgePenaltyForDeclaredFault(
-			rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, postResult.RecoveredPower.QA, rt.CurrEpoch(),
+			rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, postResult.RecoveredPower.QA,
 		)
 
 		// Note: We could delay this charge until end of deadline, but that would require more accounting state.
@@ -443,7 +441,7 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 
 // Proposals must be posted on chain via sma.PublishStorageDeals before PreCommitSector.
 // Optimization: PreCommitSector could contain a list of deals that are not published yet.
-func (a Actor) PreCommitSector(rt Runtime, params *SectorPreCommitInfo) *abi.EmptyValue {
+func (a Actor) PreCommitSector(rt Runtime, params *SectorPreCommitInfo) *adt.EmptyValue {
 	if _, ok := SupportedProofTypes[params.SealProof]; !ok {
 		rt.Abortf(exitcode.ErrIllegalArgument, "unsupported seal proof type: %s", params.SealProof)
 	}
@@ -541,7 +539,7 @@ func (a Actor) PreCommitSector(rt Runtime, params *SectorPreCommitInfo) *abi.Emp
 
 		sectorWeight := QAPowerForWeight(info.SectorSize, duration, dealWeight.DealWeight, dealWeight.VerifiedDealWeight)
 		depositReq := big.Max(
-			PreCommitDepositForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, sectorWeight, rt.CurrEpoch()),
+			PreCommitDepositForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, sectorWeight),
 			depositMinimum,
 		)
 		if availableBalance.LessThan(depositReq) {
@@ -587,7 +585,7 @@ type ProveCommitSectorParams struct {
 // Checks state of the corresponding sector pre-commitment, then schedules the proof to be verified in bulk
 // by the power actor.
 // If valid, the power actor will call ConfirmSectorProofsValid at the end of the same epoch as this message.
-func (a Actor) ProveCommitSector(rt Runtime, params *ProveCommitSectorParams) *abi.EmptyValue {
+func (a Actor) ProveCommitSector(rt Runtime, params *ProveCommitSectorParams) *adt.EmptyValue {
 	rt.ValidateImmediateCallerAcceptAny()
 
 	store := adt.AsStore(rt)
@@ -637,7 +635,7 @@ func (a Actor) ProveCommitSector(rt Runtime, params *ProveCommitSectorParams) *a
 	return nil
 }
 
-func (a Actor) ConfirmSectorProofsValid(rt Runtime, params *builtin.ConfirmSectorProofsParams) *abi.EmptyValue {
+func (a Actor) ConfirmSectorProofsValid(rt Runtime, params *builtin.ConfirmSectorProofsParams) *adt.EmptyValue {
 	rt.ValidateImmediateCallerIs(builtin.StoragePowerActorAddr)
 
 	// get network stats from other actors
@@ -735,14 +733,14 @@ func (a Actor) ConfirmSectorProofsValid(rt Runtime, params *builtin.ConfirmSecto
 			}
 
 			power := QAPowerForWeight(info.SectorSize, duration, precommit.DealWeight, precommit.VerifiedDealWeight)
-			dayReward := ExpectedRewardForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, power, builtin.EpochsInDay, rt.CurrEpoch())
+			dayReward := ExpectedRewardForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, power, builtin.EpochsInDay)
 			// The storage pledge is recorded for use in computing the penalty if this sector is terminated
 			// before its declared expiration.
 			// It's not capped to 1 FIL for Space Race, so likely exceeds the actual initial pledge requirement.
-			storagePledge := ExpectedRewardForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, power, InitialPledgeProjectionPeriod, rt.CurrEpoch())
+			storagePledge := ExpectedRewardForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, power, InitialPledgeProjectionPeriod)
 
 			initialPledge := InitialPledgeForPower(power, rewardStats.ThisEpochBaselinePower, pwrTotal.PledgeCollateral,
-				rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, circulatingSupply, rt.CurrEpoch())
+				rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, circulatingSupply)
 
 			totalPrecommitDeposit = big.Add(totalPrecommitDeposit, precommit.PreCommitDeposit)
 			totalPledge = big.Add(totalPledge, initialPledge)
@@ -801,7 +799,7 @@ type CheckSectorProvenParams struct {
 	SectorNumber abi.SectorNumber
 }
 
-func (a Actor) CheckSectorProven(rt Runtime, params *CheckSectorProvenParams) *abi.EmptyValue {
+func (a Actor) CheckSectorProven(rt Runtime, params *CheckSectorProvenParams) *adt.EmptyValue {
 	rt.ValidateImmediateCallerAcceptAny()
 
 	var st State
@@ -835,7 +833,7 @@ type ExpirationExtension struct {
 // Changes the expiration epoch for a sector to a new, later one.
 // The sector must not be terminated or faulty.
 // The sector's power is recomputed for the new expiration.
-func (a Actor) ExtendSectorExpiration(rt Runtime, params *ExtendSectorExpirationParams) *abi.EmptyValue {
+func (a Actor) ExtendSectorExpiration(rt Runtime, params *ExtendSectorExpirationParams) *adt.EmptyValue {
 	if uint64(len(params.Extensions)) > AddressedPartitionsMax {
 		rt.Abortf(exitcode.ErrIllegalArgument, "too many declarations %d, max %d", len(params.Extensions), AddressedPartitionsMax)
 	}
@@ -1090,7 +1088,7 @@ type FaultDeclaration struct {
 	Sectors bitfield.BitField
 }
 
-func (a Actor) DeclareFaults(rt Runtime, params *DeclareFaultsParams) *abi.EmptyValue {
+func (a Actor) DeclareFaults(rt Runtime, params *DeclareFaultsParams) *adt.EmptyValue {
 	toProcess := make(DeadlineSectorMap)
 	for _, term := range params.Faults {
 		err := toProcess.Add(term.Deadline, term.Partition, term.Sectors)
@@ -1125,7 +1123,7 @@ func (a Actor) DeclareFaults(rt Runtime, params *DeclareFaultsParams) *abi.Empty
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to load deadline %d", dlIdx)
 
 			faultExpirationEpoch := targetDeadline.Last() + FaultMaxAge
-			newFaultyPower, err := deadline.DeclareFaults(store, sectors, info.SectorSize, QuantSpecForDeadline(targetDeadline), faultExpirationEpoch, pm)
+			newFaultyPower, err := deadline.DeclareFaults(store, sectors, info.SectorSize, targetDeadline.QuantSpec(), faultExpirationEpoch, pm)
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to declare faults for deadline %d", dlIdx)
 
 			err = deadlines.UpdateDeadline(store, dlIdx, deadline)
@@ -1163,7 +1161,7 @@ type RecoveryDeclaration struct {
 	Sectors bitfield.BitField
 }
 
-func (a Actor) DeclareFaultsRecovered(rt Runtime, params *DeclareFaultsRecoveredParams) *abi.EmptyValue {
+func (a Actor) DeclareFaultsRecovered(rt Runtime, params *DeclareFaultsRecoveredParams) *adt.EmptyValue {
 	toProcess := make(DeadlineSectorMap)
 	for _, term := range params.Recoveries {
 		err := toProcess.Add(term.Deadline, term.Partition, term.Sectors)
@@ -1227,7 +1225,7 @@ type CompactPartitionsParams struct {
 // The final partition in the deadline is always included in the compaction, whether or not explicitly requested.
 // Removed sectors are removed from state entirely.
 // May not be invoked if the deadline has any un-processed early terminations.
-func (a Actor) CompactPartitions(rt Runtime, params *CompactPartitionsParams) *abi.EmptyValue {
+func (a Actor) CompactPartitions(rt Runtime, params *CompactPartitionsParams) *adt.EmptyValue {
 	if params.Deadline >= WPoStPeriodDeadlines {
 		rt.Abortf(exitcode.ErrIllegalArgument, "invalid deadline %v", params.Deadline)
 	}
@@ -1291,7 +1289,7 @@ type CompactSectorNumbersParams struct {
 // can be called to mask out (throw away) entire ranges of unused sector IDs.
 // For example, if sectors 1-99 and 101-200 have been allocated, sector number
 // 99 can be masked out to collapse these two ranges into one.
-func (a Actor) CompactSectorNumbers(rt Runtime, params *CompactSectorNumbersParams) *abi.EmptyValue {
+func (a Actor) CompactSectorNumbers(rt Runtime, params *CompactSectorNumbersParams) *adt.EmptyValue {
 	lastSectorNo, err := params.MaskSectorNumbers.Last()
 	builtin.RequireNoErr(rt, err, exitcode.ErrIllegalArgument, "invalid mask bitfield")
 	if lastSectorNo > abi.MaxSectorNumber {
@@ -1316,14 +1314,14 @@ func (a Actor) CompactSectorNumbers(rt Runtime, params *CompactSectorNumbersPara
 ///////////////////////
 
 // Locks up some amount of the miner's unlocked balance (including funds received alongside the invoking message).
-func (a Actor) AddLockedFund(rt Runtime, amountToLock *abi.TokenAmount) *abi.EmptyValue {
+func (a Actor) AddLockedFund(rt Runtime, amountToLock *abi.TokenAmount) *adt.EmptyValue {
 	if amountToLock.Sign() < 0 {
 		rt.Abortf(exitcode.ErrIllegalArgument, "cannot lock up a negative amount of funds")
 	}
 
-	vestingSchedule := &RewardVestingSpecV0
-	if rt.NetworkVersion() >= network.Version1 {
-		vestingSchedule = &RewardVestingSpecV1
+ 	vestingSchedule := &RewardVestingSpecV0
+ 	if rt.NetworkVersion() >= runtime.NetworkVersion1 {
+ 		vestingSchedule = &RewardVestingSpecV1
 	}
 
 	var st State
@@ -1356,7 +1354,7 @@ type ReportConsensusFaultParams struct {
 	BlockHeaderExtra []byte
 }
 
-func (a Actor) ReportConsensusFault(rt Runtime, params *ReportConsensusFaultParams) *abi.EmptyValue {
+func (a Actor) ReportConsensusFault(rt Runtime, params *ReportConsensusFaultParams) *adt.EmptyValue {
 	// Note: only the first reporter of any fault is rewarded.
 	// Subsequent invocations fail because the target miner has been removed.
 	rt.ValidateImmediateCallerType(builtin.CallerTypesSignable...)
@@ -1400,7 +1398,7 @@ type WithdrawBalanceParams struct {
 	AmountRequested abi.TokenAmount
 }
 
-func (a Actor) WithdrawBalance(rt Runtime, params *WithdrawBalanceParams) *abi.EmptyValue {
+func (a Actor) WithdrawBalance(rt Runtime, params *WithdrawBalanceParams) *adt.EmptyValue {
 	var st State
 	if params.AmountRequested.LessThan(big.Zero()) {
 		rt.Abortf(exitcode.ErrIllegalArgument, "negative fund requested for withdrawal: %s", params.AmountRequested)
@@ -1452,7 +1450,7 @@ func (a Actor) WithdrawBalance(rt Runtime, params *WithdrawBalanceParams) *abi.E
 // Cron //
 //////////
 
-func (a Actor) OnDeferredCronEvent(rt Runtime, payload *CronEventPayload) *abi.EmptyValue {
+func (a Actor) OnDeferredCronEvent(rt Runtime, payload *CronEventPayload) *adt.EmptyValue {
 	rt.ValidateImmediateCallerIs(builtin.StoragePowerActorAddr)
 
 	switch payload.EventType {
@@ -1522,7 +1520,7 @@ func processEarlyTerminations(rt Runtime) (more bool) {
 				totalInitialPledge = big.Add(totalInitialPledge, sector.InitialPledge)
 			}
 			penalty = big.Add(penalty, terminationPenalty(info.SectorSize, epoch, networkVersion,
-				rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, sectors, rt.CurrEpoch()))
+				rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, sectors))
 			dealsToTerminate = append(dealsToTerminate, params)
 
 			return nil
@@ -1623,7 +1621,7 @@ func handleProvingDeadline(rt Runtime) {
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to load deadlines")
 		deadline, err := deadlines.LoadDeadline(store, dlInfo.Index)
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to load deadline %d", dlInfo.Index)
-		quant := QuantSpecForDeadline(dlInfo)
+		quant := dlInfo.QuantSpec()
 		unlockedBalance := st.GetUnlockedBalance(rt.CurrentBalance())
 
 		{
@@ -1639,9 +1637,9 @@ func handleProvingDeadline(rt Runtime) {
 
 			// Unlock sector penalty for all undeclared faults.
 			penaltyTarget := PledgePenaltyForUndeclaredFault(epochReward.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed,
-				penalizePowerTotal, rt.NetworkVersion(), rt.CurrEpoch())
+				penalizePowerTotal, rt.NetworkVersion())
 			// Subtract the "ongoing" fault fee from the amount charged now, since it will be added on just below.
-			penaltyTarget = big.Sub(penaltyTarget, PledgePenaltyForDeclaredFault(epochReward.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, penalizePowerTotal, rt.CurrEpoch()))
+			penaltyTarget = big.Sub(penaltyTarget, PledgePenaltyForDeclaredFault(epochReward.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, penalizePowerTotal))
 			penaltyFromVesting, penaltyFromBalance, err := st.PenalizeFundsInPriorityOrder(store, currEpoch, penaltyTarget, unlockedBalance)
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to unlock penalty")
 			unlockedBalance = big.Sub(unlockedBalance, penaltyFromBalance)
@@ -1652,7 +1650,7 @@ func handleProvingDeadline(rt Runtime) {
 		{
 			// Record faulty power for penalisation of ongoing faults, before popping expirations.
 			// This includes any power that was just faulted from missing a PoSt.
-			penaltyTarget := PledgePenaltyForDeclaredFault(epochReward.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, deadline.FaultyPower.QA, rt.CurrEpoch())
+			penaltyTarget := PledgePenaltyForDeclaredFault(epochReward.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, deadline.FaultyPower.QA)
 			penaltyFromVesting, penaltyFromBalance, err := st.PenalizeFundsInPriorityOrder(store, currEpoch, penaltyTarget, unlockedBalance)
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to unlock penalty")
 			unlockedBalance = big.Sub(unlockedBalance, penaltyFromBalance) //nolint:ineffassign
@@ -1993,7 +1991,7 @@ func requestDealWeight(rt Runtime, dealIDs []abi.DealID, sectorStart, sectorExpi
 
 }
 
-func commitWorkerKeyChange(rt Runtime) *abi.EmptyValue {
+func commitWorkerKeyChange(rt Runtime) *adt.EmptyValue {
 	var st State
 	rt.State().Transaction(&st, func() {
 		info := getMinerInfo(rt, &st)
@@ -2150,7 +2148,7 @@ func nextProvingPeriodStart(currEpoch abi.ChainEpoch, offset abi.ChainEpoch) abi
 // Computes deadline information for a fault or recovery declaration.
 // If the deadline has not yet elapsed, the declaration is taken as being for the current proving period.
 // If the deadline has elapsed, it's instead taken as being for the next proving period after the current epoch.
-func declarationDeadlineInfo(periodStart abi.ChainEpoch, deadlineIdx uint64, currEpoch abi.ChainEpoch) (*dline.Info, error) {
+func declarationDeadlineInfo(periodStart abi.ChainEpoch, deadlineIdx uint64, currEpoch abi.ChainEpoch) (*DeadlineInfo, error) {
 	if deadlineIdx >= WPoStPeriodDeadlines {
 		return nil, fmt.Errorf("invalid deadline %d, must be < %d", deadlineIdx, WPoStPeriodDeadlines)
 	}
@@ -2160,7 +2158,7 @@ func declarationDeadlineInfo(periodStart abi.ChainEpoch, deadlineIdx uint64, cur
 }
 
 // Checks that a fault or recovery declaration at a specific deadline is outside the exclusion window for the deadline.
-func validateFRDeclarationDeadline(deadline *dline.Info) error {
+func validateFRDeclarationDeadline(deadline *DeadlineInfo) error {
 	if deadline.FaultCutoffPassed() {
 		return fmt.Errorf("late fault or recovery declaration at %v", deadline)
 	}
@@ -2180,13 +2178,13 @@ func validatePartitionContainsSectors(partition *Partition, sectors bitfield.Bit
 	return nil
 }
 
-func terminationPenalty(sectorSize abi.SectorSize, currEpoch abi.ChainEpoch, networkVersion network.Version,
-	rewardEstimate, networkQAPowerEstimate *smoothing.FilterEstimate, sectors []*SectorOnChainInfo, currHeight abi.ChainEpoch) abi.TokenAmount {
+func terminationPenalty(sectorSize abi.SectorSize, currEpoch abi.ChainEpoch, networkVersion runtime.NetworkVersion,
+	rewardEstimate, networkQAPowerEstimate *smoothing.FilterEstimate, sectors []*SectorOnChainInfo) abi.TokenAmount {
 	totalFee := big.Zero()
 	for _, s := range sectors {
 		sectorPower := QAPowerForSector(sectorSize, s)
 		fee := PledgePenaltyForTermination(s.ExpectedDayReward, s.ExpectedStoragePledge, currEpoch-s.Activation, rewardEstimate,
-			networkQAPowerEstimate, sectorPower, networkVersion, currHeight)
+			networkQAPowerEstimate, sectorPower, networkVersion)
 		totalFee = big.Add(fee, totalFee)
 	}
 	return totalFee

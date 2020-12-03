@@ -2,9 +2,8 @@ package builtin
 
 import (
 	addr "github.com/filecoin-project/go-address"
-	"github.com/ipfs/go-cid"
-
 	autil "github.com/filecoin-project/specs-actors/actors/util"
+	"github.com/ipfs/go-cid"
 )
 
 // Addresses for singleton system actors.

@@ -70,8 +70,6 @@ var SealedCIDPrefix = cid.Prefix{
 
 // List of proof types which can be used when creating new miner actors
 var SupportedProofTypes = map[abi.RegisteredSealProof]struct{}{
-	abi.RegisteredSealProof_StackedDrg4GiBV1:  {},
-	abi.RegisteredSealProof_StackedDrg16GiBV1: {},
 	abi.RegisteredSealProof_StackedDrg32GiBV1: {},
 	abi.RegisteredSealProof_StackedDrg64GiBV1: {},
 }
@@ -84,8 +82,6 @@ var MaxSealDuration = map[abi.RegisteredSealProof]abi.ChainEpoch{
 	abi.RegisteredSealProof_StackedDrg8MiBV1:   abi.ChainEpoch(10000),
 	abi.RegisteredSealProof_StackedDrg512MiBV1: abi.ChainEpoch(10000),
 	abi.RegisteredSealProof_StackedDrg64GiBV1:  abi.ChainEpoch(10000),
-	abi.RegisteredSealProof_StackedDrg4GiBV1:   abi.ChainEpoch(10000),
-	abi.RegisteredSealProof_StackedDrg16GiBV1:  abi.ChainEpoch(10000),
 }
 
 // Number of epochs between publishing the precommit and when the challenge for interactive PoRep is drawn

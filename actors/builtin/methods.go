@@ -40,8 +40,7 @@ var MethodsMultisig = struct {
 	RemoveSigner                abi.MethodNum
 	SwapSigner                  abi.MethodNum
 	ChangeNumApprovalsThreshold abi.MethodNum
-	LockBalance                 abi.MethodNum
-}{MethodConstructor, 2, 3, 4, 5, 6, 7, 8, 9}
+}{MethodConstructor, 2, 3, 4, 5, 6, 7, 8}
 
 var MethodsPaych = struct {
 	Constructor        abi.MethodNum

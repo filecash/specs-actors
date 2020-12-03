@@ -12,13 +12,12 @@ import (
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/go-state-types/crypto"
-	"github.com/filecoin-project/go-state-types/exitcode"
-	"github.com/filecoin-project/go-state-types/network"
 	cid "github.com/ipfs/go-cid"
 	mh "github.com/multiformats/go-multihash"
 
+	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-actors/actors/runtime"
+	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 	"github.com/filecoin-project/specs-actors/actors/runtime/proof"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 )
@@ -30,7 +29,7 @@ type Runtime struct {
 	// Execution context
 	ctx               context.Context
 	epoch             abi.ChainEpoch
-	networkVersion    network.Version
+	networkVersion    runtime.NetworkVersion
 	receiver          addr.Address
 	caller            addr.Address
 	callerType        cid.Cid
@@ -169,7 +168,7 @@ var typeOfCborMarshaler = reflect.TypeOf((*runtime.CBORMarshaler)(nil)).Elem()
 
 ///// Implementation of the runtime API /////
 
-func (rt *Runtime) NetworkVersion() network.Version {
+func (rt *Runtime) NetworkVersion() runtime.NetworkVersion {
 	return rt.networkVersion
 }
 
@@ -434,14 +433,14 @@ func (rt *Runtime) checkArgument(predicate bool, msg string, args ...interface{}
 func (rt *Runtime) get(c cid.Cid) ([]byte, bool) {
 	prefix := c.Prefix()
 	if prefix.Codec != cid.DagCBOR {
-		rt.Abortf(exitcode.ErrSerialization, "tried to fetch a non-cbor object: %s", c)
+		rt.Abortf(exitcode.SysErrSerialization, "tried to fetch a non-cbor object: %s", c)
 	}
 
 	var data []byte
 	if prefix.MhType == mh.IDENTITY {
 		decoded, err := mh.Decode(c.Hash())
 		if err != nil {
-			rt.Abortf(exitcode.ErrSerialization, "failed to parse identity cid %s: %s", c, err)
+			rt.Abortf(exitcode.SysErrSerialization, "failed to parse identity cid %s: %s", c, err)
 		}
 		data = decoded.Digest
 	} else if stored, found := rt.store[c]; found {
@@ -465,7 +464,7 @@ func (rt *Runtime) Get(c cid.Cid, o runtime.CBORUnmarshaler) bool {
 	if found {
 		err := o.UnmarshalCBOR(bytes.NewReader(data))
 		if err != nil {
-			rt.Abortf(exitcode.ErrSerialization, err.Error())
+			rt.Abortf(exitcode.SysErrSerialization, err.Error())
 		}
 	}
 
@@ -477,12 +476,12 @@ func (rt *Runtime) Put(o runtime.CBORMarshaler) cid.Cid {
 	r := bytes.Buffer{}
 	err := o.MarshalCBOR(&r)
 	if err != nil {
-		rt.Abortf(exitcode.ErrSerialization, err.Error())
+		rt.Abortf(exitcode.SysErrSerialization, err.Error())
 	}
 	data := r.Bytes()
 	key, err := abi.CidBuilder.Sum(data)
 	if err != nil {
-		rt.Abortf(exitcode.ErrSerialization, err.Error())
+		rt.Abortf(exitcode.SysErrSerialization, err.Error())
 	}
 	rt.put(key, data)
 	return key
@@ -758,7 +757,7 @@ func (rt *Runtime) SetReceived(amt abi.TokenAmount) {
 	rt.valueReceived = amt
 }
 
-func (rt *Runtime) SetNetworkVersion(v network.Version) {
+func (rt *Runtime) SetNetworkVersion(v runtime.NetworkVersion) {
 	rt.networkVersion = v
 }
 
@@ -819,7 +818,7 @@ func (rt *Runtime) ExpectGetRandomnessTickets(tag crypto.DomainSeparationTag, ep
 func (rt *Runtime) ExpectSend(toAddr addr.Address, methodNum abi.MethodNum, params runtime.CBORMarshaler, value abi.TokenAmount, ret runtime.CBORMarshaler, exitCode exitcode.ExitCode) {
 	// Adapt nil to Empty as convenience for the caller (otherwise we would require non-nil here).
 	if ret == nil {
-		ret = abi.Empty
+		ret = adt.Empty
 	}
 	rt.expectSends = append(rt.expectSends, &expectedMessage{
 		to:         toAddr,
@@ -1047,7 +1046,7 @@ func (rt *Runtime) Call(method interface{}, params interface{}) interface{} {
 	if params != nil {
 		arg = reflect.ValueOf(params)
 	} else {
-		arg = reflect.ValueOf(abi.Empty)
+		arg = reflect.ValueOf(adt.Empty)
 	}
 	ret := meth.Call([]reflect.Value{reflect.ValueOf(rt), arg})
 	return ret[0].Interface()

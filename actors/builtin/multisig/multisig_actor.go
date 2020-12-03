@@ -7,10 +7,10 @@ import (
 
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
-	"github.com/filecoin-project/go-state-types/exitcode"
 
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	"github.com/filecoin-project/specs-actors/actors/runtime"
+	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 	. "github.com/filecoin-project/specs-actors/actors/util"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 )
@@ -60,7 +60,6 @@ func (a Actor) Exports() []interface{} {
 		6:                         a.RemoveSigner,
 		7:                         a.SwapSigner,
 		8:                         a.ChangeNumApprovalsThreshold,
-		9:                         a.LockBalance,
 	}
 }
 
@@ -72,7 +71,7 @@ type ConstructorParams struct {
 	UnlockDuration        abi.ChainEpoch
 }
 
-func (a Actor) Constructor(rt runtime.Runtime, params *ConstructorParams) *abi.EmptyValue {
+func (a Actor) Constructor(rt runtime.Runtime, params *ConstructorParams) *adt.EmptyValue {
 	rt.ValidateImmediateCallerIs(builtin.InitActorAddr)
 
 	if len(params.Signers) < 1 {
@@ -117,7 +116,9 @@ func (a Actor) Constructor(rt runtime.Runtime, params *ConstructorParams) *abi.E
 	st.PendingTxns = pending
 	st.InitialBalance = abi.NewTokenAmount(0)
 	if params.UnlockDuration != 0 {
-		st.SetLocked(rt.CurrEpoch(), params.UnlockDuration, rt.Message().ValueReceived())
+		st.InitialBalance = rt.Message().ValueReceived()
+		st.UnlockDuration = params.UnlockDuration
+		st.StartEpoch = rt.CurrEpoch()
 	}
 
 	rt.State().Create(&st)
@@ -240,7 +241,7 @@ func (a Actor) Approve(rt runtime.Runtime, params *TxnIDParams) *ApproveReturn {
 	}
 }
 
-func (a Actor) Cancel(rt runtime.Runtime, params *TxnIDParams) *abi.EmptyValue {
+func (a Actor) Cancel(rt runtime.Runtime, params *TxnIDParams) *adt.EmptyValue {
 	rt.ValidateImmediateCallerType(builtin.CallerTypesSignable...)
 	callerAddr := rt.Message().Caller()
 
@@ -284,7 +285,7 @@ type AddSignerParams struct {
 	Increase bool
 }
 
-func (a Actor) AddSigner(rt runtime.Runtime, params *AddSignerParams) *abi.EmptyValue {
+func (a Actor) AddSigner(rt runtime.Runtime, params *AddSignerParams) *adt.EmptyValue {
 	// Can only be called by the multisig wallet itself.
 	rt.ValidateImmediateCallerIs(rt.Message().Receiver())
 	resolvedNewSigner, err := builtin.ResolveToIDAddr(rt, params.Signer)
@@ -310,7 +311,7 @@ type RemoveSignerParams struct {
 	Decrease bool
 }
 
-func (a Actor) RemoveSigner(rt runtime.Runtime, params *RemoveSignerParams) *abi.EmptyValue {
+func (a Actor) RemoveSigner(rt runtime.Runtime, params *RemoveSignerParams) *adt.EmptyValue {
 	// Can only be called by the multisig wallet itself.
 	rt.ValidateImmediateCallerIs(rt.Message().Receiver())
 	resolvedOldSigner, err := builtin.ResolveToIDAddr(rt, params.Signer)
@@ -356,7 +357,7 @@ type SwapSignerParams struct {
 	To   addr.Address
 }
 
-func (a Actor) SwapSigner(rt runtime.Runtime, params *SwapSignerParams) *abi.EmptyValue {
+func (a Actor) SwapSigner(rt runtime.Runtime, params *SwapSignerParams) *adt.EmptyValue {
 	// Can only be called by the multisig wallet itself.
 	rt.ValidateImmediateCallerIs(rt.Message().Receiver())
 
@@ -395,7 +396,7 @@ type ChangeNumApprovalsThresholdParams struct {
 	NewThreshold uint64
 }
 
-func (a Actor) ChangeNumApprovalsThreshold(rt runtime.Runtime, params *ChangeNumApprovalsThresholdParams) *abi.EmptyValue {
+func (a Actor) ChangeNumApprovalsThreshold(rt runtime.Runtime, params *ChangeNumApprovalsThresholdParams) *adt.EmptyValue {
 	// Can only be called by the multisig wallet itself.
 	rt.ValidateImmediateCallerIs(rt.Message().Receiver())
 
@@ -406,39 +407,6 @@ func (a Actor) ChangeNumApprovalsThreshold(rt runtime.Runtime, params *ChangeNum
 		}
 
 		st.NumApprovalsThreshold = params.NewThreshold
-	})
-	return nil
-}
-
-type LockBalanceParams struct {
-	StartEpoch abi.ChainEpoch
-	UnlockDuration abi.ChainEpoch
-	Amount abi.TokenAmount
-}
-
-func (a Actor) LockBalance(rt runtime.Runtime, params *LockBalanceParams) *abi.EmptyValue {
-	// This method was introduced at network version 2 in testnet.
-	// Prior to that, the method did not exist so the VM would abort.
-	// Lotus does not enforce that actors shall not abort with system exit codes (at network versions 0 and 1),
-	// so we can exploit this to make the change backwards compatible.
-	if rt.NetworkVersion() < 2 {
-		rt.Abortf(exitcode.SysErrInvalidMethod, "invalid method until network version 2")
-	}
-
-	// Can only be called by the multisig wallet itself.
-	rt.ValidateImmediateCallerIs(rt.Message().Receiver())
-
-	if params.UnlockDuration <= 0 {
-		// Note: Unlock duration of zero is workable, but rejected as ineffective, probably an error.
-		rt.Abortf(exitcode.ErrIllegalArgument, "unlock duration must be positive")
-	}
-
-	var st State
-	rt.State().Transaction(&st, func() {
-		if st.UnlockDuration != 0 {
-			rt.Abortf(exitcode.ErrForbidden, "modification of unlock disallowed")
-		}
-		st.SetLocked(params.StartEpoch, params.UnlockDuration, params.Amount)
 	})
 	return nil
 }

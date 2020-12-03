@@ -6,12 +6,13 @@ import (
 
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
-	"github.com/filecoin-project/go-state-types/exitcode"
 	"github.com/ipfs/go-cid"
 	mh "github.com/multiformats/go-multihash"
 
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	"github.com/filecoin-project/specs-actors/actors/runtime"
+	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
+	"github.com/filecoin-project/specs-actors/actors/util/adt"
 )
 
 // The Puppet Actor exists to aid testing the runtime and environment in which it's embedded. It provides direct access
@@ -31,7 +32,7 @@ func (a Actor) Exports() []interface{} {
 
 var _ runtime.Invokee = Actor{}
 
-func (a Actor) Constructor(rt runtime.Runtime, _ *abi.EmptyValue) *abi.EmptyValue {
+func (a Actor) Constructor(rt runtime.Runtime, _ *adt.EmptyValue) *adt.EmptyValue {
 	rt.ValidateImmediateCallerAcceptAny()
 
 	rt.State().Create(&State{})
@@ -86,12 +87,12 @@ func (a Actor) SendMarshalCBORFailure(rt runtime.Runtime, params *SendParams) *S
 	}
 }
 
-func (a Actor) ReturnMarshalCBORFailure(rt runtime.Runtime, _ *abi.EmptyValue) *FailToMarshalCBOR {
+func (a Actor) ReturnMarshalCBORFailure(rt runtime.Runtime, _ *adt.EmptyValue) *FailToMarshalCBOR {
 	rt.ValidateImmediateCallerAcceptAny()
 	return &FailToMarshalCBOR{}
 }
 
-func (a Actor) RuntimeTransactionMarshalCBORFailure(rt runtime.Runtime, _ *abi.EmptyValue) *abi.EmptyValue {
+func (a Actor) RuntimeTransactionMarshalCBORFailure(rt runtime.Runtime, _ *adt.EmptyValue) *adt.EmptyValue {
 	rt.ValidateImmediateCallerAcceptAny()
 
 	var st State

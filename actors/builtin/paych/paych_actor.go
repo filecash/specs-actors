@@ -7,11 +7,11 @@ import (
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/go-state-types/crypto"
-	"github.com/filecoin-project/go-state-types/exitcode"
 
 	"github.com/filecoin-project/specs-actors/actors/builtin"
+	"github.com/filecoin-project/specs-actors/actors/crypto"
 	"github.com/filecoin-project/specs-actors/actors/runtime"
+	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 )
 
@@ -39,7 +39,7 @@ type ConstructorParams struct {
 }
 
 // Constructor creates a payment channel actor. See State for meaning of params.
-func (pca *Actor) Constructor(rt runtime.Runtime, params *ConstructorParams) *abi.EmptyValue {
+func (pca *Actor) Constructor(rt runtime.Runtime, params *ConstructorParams) *adt.EmptyValue {
 	// Only InitActor can create a payment channel actor. It creates the actor on
 	// behalf of the payer/payee.
 	rt.ValidateImmediateCallerType(builtin.InitActorCodeID)
@@ -131,7 +131,7 @@ type PaymentVerifyParams struct {
 	Proof []byte
 }
 
-func (pca Actor) UpdateChannelState(rt runtime.Runtime, params *UpdateChannelStateParams) *abi.EmptyValue {
+func (pca Actor) UpdateChannelState(rt runtime.Runtime, params *UpdateChannelStateParams) *adt.EmptyValue {
 	var st State
 	rt.State().Readonly(&st)
 
@@ -281,7 +281,7 @@ func (pca Actor) UpdateChannelState(rt runtime.Runtime, params *UpdateChannelSta
 	return nil
 }
 
-func (pca Actor) Settle(rt runtime.Runtime, _ *abi.EmptyValue) *abi.EmptyValue {
+func (pca Actor) Settle(rt runtime.Runtime, _ *adt.EmptyValue) *adt.EmptyValue {
 	var st State
 	rt.State().Transaction(&st, func() {
 		rt.ValidateImmediateCallerIs(st.From, st.To)
@@ -298,7 +298,7 @@ func (pca Actor) Settle(rt runtime.Runtime, _ *abi.EmptyValue) *abi.EmptyValue {
 	return nil
 }
 
-func (pca Actor) Collect(rt runtime.Runtime, _ *abi.EmptyValue) *abi.EmptyValue {
+func (pca Actor) Collect(rt runtime.Runtime, _ *adt.EmptyValue) *adt.EmptyValue {
 	var st State
 	rt.State().Readonly(&st)
 	rt.ValidateImmediateCallerIs(st.From, st.To)

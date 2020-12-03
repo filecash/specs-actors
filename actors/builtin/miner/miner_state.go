@@ -9,13 +9,12 @@ import (
 	"github.com/filecoin-project/go-bitfield"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/go-state-types/dline"
-	xc "github.com/filecoin-project/go-state-types/exitcode"
 	cid "github.com/ipfs/go-cid"
 	errors "github.com/pkg/errors"
 	xerrors "golang.org/x/xerrors"
 
 	"github.com/filecoin-project/specs-actors/actors/builtin"
+	xc "github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 	. "github.com/filecoin-project/specs-actors/actors/util"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 )
@@ -219,13 +218,13 @@ func (st *State) SaveInfo(store adt.Store, info *MinerInfo) error {
 }
 
 // Returns deadline calculations for the current (according to state) proving period.
-func (st *State) DeadlineInfo(currEpoch abi.ChainEpoch) *dline.Info {
+func (st *State) DeadlineInfo(currEpoch abi.ChainEpoch) *DeadlineInfo {
 	return NewDeadlineInfo(st.ProvingPeriodStart, st.CurrentDeadline, currEpoch)
 }
 
 // Returns deadline calculations for the current (according to state) proving period.
 func (st *State) QuantSpecForDeadline(dlIdx uint64) QuantSpec {
-	return QuantSpecForDeadline(NewDeadlineInfo(st.ProvingPeriodStart, dlIdx, 0))
+	return NewDeadlineInfo(st.ProvingPeriodStart, dlIdx, 0).QuantSpec()
 }
 
 func (st *State) AllocateSectorNumber(store adt.Store, sectorNo abi.SectorNumber) error {
@@ -464,7 +463,7 @@ func (st *State) RescheduleSectorExpirations(
 			return err
 		}
 
-		if err := dl.RescheduleSectorExpirations(store, sectors, newExpiration, pm, ssize, QuantSpecForDeadline(dlInfo)); err != nil {
+		if err := dl.RescheduleSectorExpirations(store, sectors, newExpiration, pm, ssize, dlInfo.QuantSpec()); err != nil {
 			return err
 		}
 

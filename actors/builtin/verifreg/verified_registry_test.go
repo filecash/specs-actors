@@ -5,13 +5,12 @@ import (
 	"testing"
 
 	"github.com/filecoin-project/go-address"
-	abi "github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
-	"github.com/filecoin-project/go-state-types/exitcode"
 	"github.com/stretchr/testify/require"
 
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	"github.com/filecoin-project/specs-actors/actors/builtin/verifreg"
+	"github.com/filecoin-project/specs-actors/actors/runtime/exitcode"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 	"github.com/filecoin-project/specs-actors/support/mock"
 	tutil "github.com/filecoin-project/specs-actors/support/testing"
@@ -37,7 +36,7 @@ func TestConstruction(t *testing.T) {
 		rt.ExpectValidateCallerAddr(builtin.SystemActorAddr)
 
 		raddr := tutil.NewIDAddr(t, 101)
-		ret := rt.Call(actor.Constructor, &raddr).(*abi.EmptyValue)
+		ret := rt.Call(actor.Constructor, &raddr).(*adt.EmptyValue)
 		require.Nil(t, ret)
 		rt.Verify()
 
@@ -63,7 +62,7 @@ func TestConstruction(t *testing.T) {
 		rootIdAddr := tutil.NewIDAddr(t, 201)
 		rt.AddIDAddress(raddr, rootIdAddr)
 
-		ret := rt.Call(actor.Constructor, &raddr).(*abi.EmptyValue)
+		ret := rt.Call(actor.Constructor, &raddr).(*adt.EmptyValue)
 		require.Nil(t, ret)
 		rt.Verify()
 

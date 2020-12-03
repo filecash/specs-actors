@@ -99,7 +99,6 @@ func main() {
 		multisig.TxnIDParams{},
 		multisig.ChangeNumApprovalsThresholdParams{},
 		multisig.SwapSignerParams{},
-		multisig.LockBalanceParams{},
 		// method returns
 		multisig.ApproveReturn{},
 		multisig.ProposeReturn{},
