@@ -150,9 +150,9 @@ func InitialPledgeForPower(qaPower abi.StoragePower, baselinePower abi.StoragePo
 	spaceRacePledgeCap := big.Mul(SpaceRaceInitialPledgeMaxPerByte, qaPower)
 	if currHeight >= InitialPleFactorHeight {
 		if qaPower.LessThan(big.NewInt(16 << 30)) {
-			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(InitialPledgeMaxPerByte, qaPower), InitialFactorof4G), InitialFactorDenom)
+			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(SpaceRaceInitialPledgeMaxPerByte, qaPower), InitialFactorof4G), InitialFactorDenom)
 		} else {
-			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(InitialPledgeMaxPerByte, qaPower), InitialFactorof16G), InitialFactorDenom)
+			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(SpaceRaceInitialPledgeMaxPerByte, qaPower), InitialFactorof16G), InitialFactorDenom)
 		}
 	}
 	return big.Min(nominalPledge, spaceRacePledgeCap)
