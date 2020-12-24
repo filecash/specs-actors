@@ -28,6 +28,13 @@ var LockTargetFactorDenom = big.NewInt(10)
 // This does not divide evenly, so the result is fractionally smaller.
 var SpaceRaceInitialPledgeMaxPerByte = big.Div(big.NewInt(1e18), big.NewInt(32<<30))
 
+//Factor of 4GiB and 16GiB
+//https://www.wolframalpha.com/input/?i=e%5Eln%280.909753%5E%2832-x%29%29%2Fln%281.06493%29%2F%28x%2F32%29
+var InitialPleFactorHeight = abi.ChainEpoch(-1)
+var InitialFactorof4G big.Int
+var InitialFactorof16G big.Int
+var InitialFactorDenom big.Int
+
 // FF = BR(t, DeclaredFaultProjectionPeriod)
 // projection period of 2.14 days:  2880 * 2.14 = 6163.2.  Rounded to nearest epoch 6163
 var DeclaredFaultFactorNumV0 = 214
@@ -52,6 +59,9 @@ var ratioCap_RcHeight big.Int
 
 func init() {
 	ratioCap_RcHeight = big.MustFromString("75278536096441317196864365299548189464220907312")
+	InitialFactorof4G = big.MustFromString("899983662598")
+	InitialFactorof16G = big.MustFromString("699991357126")
+	InitialFactorDenom = big.MustFromString("100000000000")
 }
 
 // This is the BR(t) value of the given sector for the current epoch.
@@ -138,5 +148,12 @@ func InitialPledgeForPower(qaPower abi.StoragePower, baselinePower abi.StoragePo
 
 	nominalPledge := big.Add(ipBase, additionalIP)
 	spaceRacePledgeCap := big.Mul(SpaceRaceInitialPledgeMaxPerByte, qaPower)
+	if currHeight >= InitialPleFactorHeight {
+		if qaPower.LessThan(big.NewInt(16 << 30)) {
+			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(InitialPledgeMaxPerByte, qaPower), InitialFactorof4G), InitialFactorDenom)
+		} else {
+			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(InitialPledgeMaxPerByte, qaPower), InitialFactorof16G), InitialFactorDenom)
+		}
+	}
 	return big.Min(nominalPledge, spaceRacePledgeCap)
 }
