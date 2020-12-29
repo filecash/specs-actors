@@ -33,15 +33,15 @@ var SealProofPolicies = map[stabi.RegisteredSealProof]*SealProofPolicy{
 	},
 	stabi.RegisteredSealProof_StackedDrg64GiBV1: {
 
-		SectorMaxLifetime:      fiveYears,
+		SectorMaxLifetime:      EpochsInFiveYears,
 		ConsensusMinerMinPower: stabi.NewStoragePower(200 << 40),
 	},
 	stabi.RegisteredSealProof_StackedDrg4GiBV1: {
-		SectorMaxLifetime:      fiveYears,
+		SectorMaxLifetime:      EpochsInFiveYears,
 		ConsensusMinerMinPower: stabi.NewStoragePower(1 << 33),
 	},
 	stabi.RegisteredSealProof_StackedDrg16GiBV1: {
-		SectorMaxLifetime:      fiveYears,
+		SectorMaxLifetime:      EpochsInFiveYears,
 		ConsensusMinerMinPower: stabi.NewStoragePower(1 << 35),
 	},
 }
