@@ -28,7 +28,7 @@ import (
 
 func TestMigrationPowerAccountingIssue(t *testing.T) {
 	ctx := context.Background()
-	v, err := vm.NewVMWithSingletons(ctx, t, ipld.NewBlockStoreInMemory()).WithNetworkVersion(network.Version6)
+	v, err := vm.NewVMWithSingletons(ctx, t).WithNetworkVersion(network.Version7)
 	require.NoError(t, err)
 
 	addrs := vm.CreateAccounts(ctx, t, v, 1, big.Mul(big.NewInt(100_000), vm.FIL), 93837778)
@@ -174,7 +174,7 @@ func TestMigrationPowerAccountingIssue(t *testing.T) {
 	// Trigger cron to keep reward accounting correct
 	vm.ApplyOk(t, v, builtin.SystemActorAddr, builtin.CronActorAddr, big.Zero(), builtin.MethodsCron.EpochTick, nil)
 
-	v, err = v.WithNetworkVersion(network.Version6)
+	v, err = v.WithNetworkVersion(network.Version7)
 	require.NoError(t, err)
 	//
 	// Confirm miner has power and invariants hold

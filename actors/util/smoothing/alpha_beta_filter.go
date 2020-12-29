@@ -14,6 +14,8 @@ var (
 	DefaultAlpha                   big.Int // Q.128 value of 9.25e-4
 	DefaultBeta                    big.Int // Q.128 value of 2.84e-7
 	ExtrapolatedCumSumRatioEpsilon big.Int // Q.128 value of 2^-50
+
+	RatioCap big.Int
 )
 
 func init() {
@@ -32,6 +34,7 @@ func init() {
 	DefaultBeta = big.NewFromGo(constBigs[1])
 	ExtrapolatedCumSumRatioEpsilon = big.NewFromGo(constBigs[2])
 
+	RatioCap = big.MustFromString("852785360732413171932946862959981894642209073129")
 }
 
 // Alpha Beta Filter "position" (value) and "velocity" (rate of change of value) estimates
@@ -134,7 +137,7 @@ func ExtrapolatedCumSumOfRatio(delta abi.ChainEpoch, relativeStart abi.ChainEpoc
 		m2 = big.Mul(velocity1, m2)         // Q.256 => Q.384
 		m2 = big.Rsh(m2, math.Precision128) //Q.384 => Q.256
 
-		return big.Div(big.Sum(m1, m2), squaredVelocity2) // Q.256 / Q.128 => Q.128
+		return big.Min(big.Div(big.Sum(m1, m2), squaredVelocity2), RatioCap) // Q.256 / Q.128 => Q.128
 
 	}
 

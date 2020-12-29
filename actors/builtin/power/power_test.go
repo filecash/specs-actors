@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/filecoin-project/go-state-types/network"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/filecoin-project/go-state-types/network"
 
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
@@ -326,25 +327,25 @@ func TestPowerAndPledgeAccounting(t *testing.T) {
 		actor.checkState(rt)
 	})
 
-	t.Run("after version 7, new miner updates MinerAboveMinPowerCount", func(t *testing.T) {
+	t.Run("after version 8, new miner updates MinerAboveMinPowerCount", func(t *testing.T) {
 		for _, test := range []struct {
 			version        network.Version
 			proof          abi.RegisteredSealProof
 			expectedMiners int64
 		}{{
-			version:        network.Version6,
+			version:        network.Version7,
 			proof:          abi.RegisteredSealProof_StackedDrg2KiBV1, // 2K sectors have zero consensus minimum
 			expectedMiners: 0,
 		}, {
-			version:        network.Version6,
+			version:        network.Version7,
 			proof:          abi.RegisteredSealProof_StackedDrg32GiBV1,
 			expectedMiners: 0,
 		}, {
-			version:        network.Version7,
+			version:        network.Version8,
 			proof:          abi.RegisteredSealProof_StackedDrg2KiBV1, // 2K sectors have zero consensus minimum
 			expectedMiners: 1,
 		}, {
-			version:        network.Version7,
+			version:        network.Version8,
 			proof:          abi.RegisteredSealProof_StackedDrg32GiBV1,
 			expectedMiners: 0,
 		}} {
@@ -798,12 +799,12 @@ func TestCron(t *testing.T) {
 			versionLabel       string
 			expectedMinerCount int64
 		}{{
-			version:            network.Version6,
-			versionLabel:       "Version6",
-			expectedMinerCount: 1,
-		}, {
 			version:            network.Version7,
 			versionLabel:       "Version7",
+			expectedMinerCount: 1,
+		}, {
+			version:            network.Version8,
+			versionLabel:       "Version8",
 			expectedMinerCount: 0,
 		}} {
 			rt := builder.WithNetworkVersion(test.version).Build(t)

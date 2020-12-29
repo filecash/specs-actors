@@ -139,7 +139,7 @@ func (a Actor) Constructor(rt Runtime, params *ConstructorParams) *abi.EmptyValu
 	deadlineIndex := currentDeadlineIndex(currEpoch, periodStart)
 	Assert(deadlineIndex < WPoStPeriodDeadlines)
 
-	info, err := ConstructMinerInfo(owner, worker, controlAddrs, params.PeerId, params.Multiaddrs, params.SealProofType)
+	info, err := ConstructMinerInfo(owner, worker, controlAddrs, params.PeerId, params.Multiaddrs, params.SealProofType, rt.NetworkVersion())
 	builtin.RequireNoErr(rt, err, exitcode.ErrIllegalArgument, "failed to construct initial miner info")
 	infoCid := rt.StorePut(info)
 
@@ -370,7 +370,7 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 	}
 
 	partitionIndexes := bitfield.New()
-	if nv >= network.Version7 {
+	if nv >= network.Version8 {
 		for _, partition := range params.Partitions {
 			partitionIndexes.Set(partition.Index)
 		}
@@ -439,7 +439,7 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 		deadline, err := deadlines.LoadDeadline(store, params.Deadline)
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to load deadline %d", params.Deadline)
 
-		if nv >= network.Version7 {
+		if nv >= network.Version8 {
 			alreadyProven, err := bitfield.IntersectBitField(deadline.PostSubmissions, partitionIndexes)
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to check proven partitions")
 			empty, err := alreadyProven.IsEmpty()
@@ -578,7 +578,7 @@ func (a Actor) PreCommitSector(rt Runtime, params *PreCommitSectorParams) *abi.E
 	feeToBurn := abi.NewTokenAmount(0)
 	rt.StateTransaction(&st, func() {
 		// Stop vesting funds as of version 7. Its computationally expensive and unlikely to release any funds.
-		if rt.NetworkVersion() < network.Version7 {
+		if rt.NetworkVersion() < network.Version8 {
 			newlyVested, err = st.UnlockVestedFunds(store, rt.CurrEpoch())
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to vest funds")
 		}
@@ -597,7 +597,7 @@ func (a Actor) PreCommitSector(rt Runtime, params *PreCommitSectorParams) *abi.E
 			rt.Abortf(exitcode.ErrForbidden, "precommit not allowed during active consensus fault")
 		}
 
-		if nv < network.Version7 {
+		if nv < network.Version8 {
 			if params.SealProof != info.SealProofType {
 				rt.Abortf(exitcode.ErrIllegalArgument, "sector seal proof %v must match miner seal proof type %d", params.SealProof, info.SealProofType)
 			}
@@ -649,7 +649,7 @@ func (a Actor) PreCommitSector(rt Runtime, params *PreCommitSectorParams) *abi.E
 
 		duration := params.Expiration - rt.CurrEpoch()
 		sectorWeight := QAPowerForWeight(info.SectorSize, duration, dealWeight.DealWeight, dealWeight.VerifiedDealWeight)
-		depositReq := PreCommitDepositForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, sectorWeight)
+		depositReq := PreCommitDepositForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, sectorWeight, rt.CurrEpoch())
 		if availableBalance.LessThan(depositReq) {
 			rt.Abortf(exitcode.ErrInsufficientFunds, "insufficient funds for pre-commit deposit: %v", depositReq)
 		}
@@ -868,13 +868,13 @@ func (a Actor) ConfirmSectorProofsValid(rt Runtime, params *builtin.ConfirmSecto
 			}
 
 			pwr := QAPowerForWeight(info.SectorSize, duration, precommit.DealWeight, precommit.VerifiedDealWeight)
-			dayReward := ExpectedRewardForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, pwr, builtin.EpochsInDay)
+			dayReward := ExpectedRewardForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, pwr, builtin.EpochsInDay, rt.CurrEpoch())
 			// The storage pledge is recorded for use in computing the penalty if this sector is terminated
 			// before its declared expiration.
 			// It's not capped to 1 FIL, so can exceed the actual initial pledge requirement.
-			storagePledge := ExpectedRewardForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, pwr, InitialPledgeProjectionPeriod)
+			storagePledge := ExpectedRewardForPower(rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, pwr, InitialPledgeProjectionPeriod, rt.CurrEpoch())
 			initialPledge := InitialPledgeForPower(pwr, rewardStats.ThisEpochBaselinePower, rewardStats.ThisEpochRewardSmoothed,
-				pwrTotal.QualityAdjPowerSmoothed, circulatingSupply)
+				pwrTotal.QualityAdjPowerSmoothed, circulatingSupply, rt.CurrEpoch())
 
 			// Lower-bound the pledge by that of the sector being replaced.
 			// Record the replaced age and reward rate for termination fee calculations.
@@ -913,7 +913,7 @@ func (a Actor) ConfirmSectorProofsValid(rt Runtime, params *builtin.ConfirmSecto
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to assign new sectors to deadlines")
 
 		// Stop unlocking funds as of version 7. It's computationally expensive and unlikely to actually unlock anything.
-		if rt.NetworkVersion() < network.Version7 {
+		if rt.NetworkVersion() < network.Version8 {
 			newlyVested, err = st.UnlockVestedFunds(store, rt.CurrEpoch())
 			if err != nil {
 				rt.Abortf(exitcode.ErrIllegalState, "failed to vest new funds: %s", err)
@@ -1114,7 +1114,7 @@ func (a Actor) ExtendSectorExpiration(rt Runtime, params *ExtendSectorExpiration
 				builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to save deadline %v partition %v", dlIdx, decl.Partition)
 
 				// Record the new partition expiration epoch for setting outside this loop over declarations.
-				if nv >= network.Version7 {
+				if nv >= network.Version8 {
 					prevEpochPartitions, ok := partitionsByNewEpoch[decl.NewExpiration]
 					partitionsByNewEpoch[decl.NewExpiration] = append(prevEpochPartitions, decl.Partition)
 					if !ok {
@@ -1127,7 +1127,7 @@ func (a Actor) ExtendSectorExpiration(rt Runtime, params *ExtendSectorExpiration
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to save partitions for deadline %d", dlIdx)
 
 			// Record partitions in deadline expiration queue
-			if nv >= network.Version7 {
+			if nv >= network.Version8 {
 				for _, epoch := range epochsToReschedule {
 					pIdxs := partitionsByNewEpoch[epoch]
 					err := deadline.AddExpirationPartitions(store, epoch, pIdxs, quant)
@@ -1854,7 +1854,7 @@ func processEarlyTerminations(rt Runtime) (more bool) {
 				totalInitialPledge = big.Add(totalInitialPledge, sector.InitialPledge)
 			}
 			penalty = big.Add(penalty, terminationPenalty(info.SectorSize, epoch,
-				rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, sectors))
+				rewardStats.ThisEpochRewardSmoothed, pwrTotal.QualityAdjPowerSmoothed, sectors, rt.CurrEpoch()))
 			dealsToTerminate = append(dealsToTerminate, params)
 
 			return nil
@@ -1949,6 +1949,7 @@ func handleProvingDeadline(rt Runtime) {
 				epochReward.ThisEpochRewardSmoothed,
 				pwrTotal.QualityAdjPowerSmoothed,
 				result.PreviouslyFaultyPower.QA,
+				rt.CurrEpoch(),
 			)
 
 			powerDeltaTotal = powerDeltaTotal.Add(result.PowerDelta)
@@ -2030,7 +2031,7 @@ func validateReplaceSector(rt Runtime, st *State, store adt.Store, params *PreCo
 	if len(replaceSector.DealIDs) > 0 {
 		rt.Abortf(exitcode.ErrIllegalArgument, "cannot replace sector %v which has deals", params.ReplaceSectorNumber)
 	}
-	if nv < network.Version7 {
+	if nv < network.Version8 {
 		if params.SealProof != replaceSector.SealProof {
 			rt.Abortf(exitcode.ErrIllegalArgument, "cannot replace sector %v seal proof %v with seal proof %v",
 				params.ReplaceSectorNumber, replaceSector.SealProof, params.SealProof)
@@ -2444,12 +2445,12 @@ func validatePartitionContainsSectors(partition *Partition, sectors bitfield.Bit
 }
 
 func terminationPenalty(sectorSize abi.SectorSize, currEpoch abi.ChainEpoch,
-	rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, sectors []*SectorOnChainInfo) abi.TokenAmount {
+	rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, sectors []*SectorOnChainInfo, currHeight abi.ChainEpoch) abi.TokenAmount {
 	totalFee := big.Zero()
 	for _, s := range sectors {
 		sectorPower := QAPowerForSector(sectorSize, s)
 		fee := PledgePenaltyForTermination(s.ExpectedDayReward, currEpoch-s.Activation, s.ExpectedStoragePledge,
-			networkQAPowerEstimate, sectorPower, rewardEstimate, s.ReplacedDayReward, s.ReplacedSectorAge)
+			networkQAPowerEstimate, sectorPower, rewardEstimate, s.ReplacedDayReward, s.ReplacedSectorAge, currHeight)
 		totalFee = big.Add(fee, totalFee)
 	}
 	return totalFee

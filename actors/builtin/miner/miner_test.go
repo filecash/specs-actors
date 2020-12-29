@@ -294,7 +294,7 @@ func TestConstruction(t *testing.T) {
 		{
 			// Before version 7, only V1 accepted
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version6)
+			rt.SetNetworkVersion(network.Version7)
 			actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1_1)
 			rt.ExpectAbort(exitcode.ErrIllegalArgument, func() {
 				actor.constructAndVerify(rt)
@@ -306,19 +306,19 @@ func TestConstruction(t *testing.T) {
 		{
 			// Version 7 accepts either
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1)
 			actor.constructAndVerify(rt)
 
 			rt = builder.Build(t)
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1_1)
 			actor.constructAndVerify(rt)
 		}
 		{
 			// From version 8, only V1_1 accepted
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version8)
+			rt.SetNetworkVersion(network.Version9)
 			actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1)
 			rt.ExpectAbort(exitcode.ErrIllegalArgument, func() {
 				actor.constructAndVerify(rt)
@@ -469,7 +469,7 @@ func TestCommitments(t *testing.T) {
 		assert.Equal(t, verifiedDealWeight, onChainPrecommit.VerifiedDealWeight)
 
 		pwrEstimate := miner.QAPowerForWeight(actor.sectorSize, precommit.Info.Expiration-precommitEpoch, onChainPrecommit.DealWeight, onChainPrecommit.VerifiedDealWeight)
-		expectedDeposit := miner.PreCommitDepositForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, pwrEstimate)
+		expectedDeposit := miner.PreCommitDepositForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, pwrEstimate, rt.CurrEpoch)
 		assert.Equal(t, expectedDeposit, onChainPrecommit.PreCommitDeposit)
 
 		// expect total precommit deposit to equal our new deposit
@@ -495,7 +495,7 @@ func TestCommitments(t *testing.T) {
 		qaPower := miner.QAPowerForWeight(actor.sectorSize, precommit.Info.Expiration-rt.Epoch(), onChainPrecommit.DealWeight, onChainPrecommit.VerifiedDealWeight)
 		assert.Equal(t, expectedPower, qaPower)
 		expectedInitialPledge := miner.InitialPledgeForPower(qaPower, actor.baselinePower, actor.epochRewardSmooth,
-			actor.epochQAPowerSmooth, rt.TotalFilCircSupply())
+			actor.epochQAPowerSmooth, rt.TotalFilCircSupply(), rt.CurrEpoch)
 		assert.Equal(t, expectedInitialPledge, st.InitialPledge)
 
 		// expect new onchain sector
@@ -556,17 +556,17 @@ func TestCommitments(t *testing.T) {
 		sealProofType       abi.RegisteredSealProof
 	}{{
 		name:                "precommit vests funds in version 6",
-		version:             network.Version6,
+		version:             network.Version7,
 		expectedPledgeDelta: abi.NewTokenAmount(-1000),
 		sealProofType:       abi.RegisteredSealProof_StackedDrg32GiBV1,
 	}, {
 		name:                "precommit stops vesting funds in version 7",
-		version:             network.Version7,
+		version:             network.Version8,
 		expectedPledgeDelta: abi.NewTokenAmount(0),
 		sealProofType:       abi.RegisteredSealProof_StackedDrg32GiBV1_1,
 	}, {
 		name:                "precommit does not vest funds in version 8",
-		version:             network.Version8,
+		version:             network.Version9,
 		expectedPledgeDelta: abi.NewTokenAmount(0),
 		sealProofType:       abi.RegisteredSealProof_StackedDrg32GiBV1_1,
 	}} {
@@ -861,14 +861,14 @@ func TestCommitments(t *testing.T) {
 		// Too big at version 4
 		proveCommit := makeProveCommit(sectorNo)
 		proveCommit.Proof = make([]byte, 1920)
-		rt.SetNetworkVersion(network.Version4)
+		rt.SetNetworkVersion(network.Version5)
 		rt.ExpectAbort(exitcode.ErrIllegalArgument, func() {
 			actor.proveCommitSectorAndConfirm(rt, precommit, proveCommit, proveCommitConf{})
 		})
 		rt.Reset()
 
 		// Good proof at version 5
-		rt.SetNetworkVersion(network.Version5)
+		rt.SetNetworkVersion(network.Version6)
 		actor.proveCommitSectorAndConfirm(rt, precommit, proveCommit, proveCommitConf{})
 		st := getState(rt)
 
@@ -896,17 +896,17 @@ func TestCommitments(t *testing.T) {
 		sealProofType      abi.RegisteredSealProof
 	}{{
 		name:               "verify proof vests funds in network version 6",
-		version:            network.Version6,
+		version:            network.Version7,
 		vestingPledgeDelta: abi.NewTokenAmount(-1000),
 		sealProofType:      abi.RegisteredSealProof_StackedDrg32GiBV1,
 	}, {
 		name:               "verify proof does not vest starting version 7",
-		version:            network.Version7,
+		version:            network.Version8,
 		vestingPledgeDelta: abi.NewTokenAmount(0),
 		sealProofType:      abi.RegisteredSealProof_StackedDrg32GiBV1_1,
 	}, {
 		name:               "verify proof still does not vest at version 7",
-		version:            network.Version8,
+		version:            network.Version9,
 		vestingPledgeDelta: abi.NewTokenAmount(0),
 		sealProofType:      abi.RegisteredSealProof_StackedDrg32GiBV1_1,
 	}} {
@@ -1045,7 +1045,7 @@ func TestCommitments(t *testing.T) {
 			Build(t)
 
 		// Create miner before version 7
-		rt.SetNetworkVersion(network.Version6)
+		rt.SetNetworkVersion(network.Version7)
 		actor.constructAndVerify(rt)
 		precommitEpoch := periodOffset + 1
 		rt.SetEpoch(precommitEpoch)
@@ -1066,7 +1066,7 @@ func TestCommitments(t *testing.T) {
 		}
 		{
 			// At version 7, both are accepted
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			pc := actor.makePreCommit(102, challengeEpoch, expiration, nil)
 			pc.SealProof = abi.RegisteredSealProof_StackedDrg32GiBV1
 			actor.preCommitSector(rt, pc, preCommitConf{})
@@ -1076,7 +1076,7 @@ func TestCommitments(t *testing.T) {
 		}
 		{
 			// After version 7, only V1_1 accepted
-			rt.SetNetworkVersion(network.Version8)
+			rt.SetNetworkVersion(network.Version9)
 			pc := actor.makePreCommit(104, challengeEpoch, expiration, nil)
 			pc.SealProof = abi.RegisteredSealProof_StackedDrg32GiBV1
 			rt.ExpectAbort(exitcode.ErrIllegalArgument, func() {
@@ -1524,7 +1524,7 @@ func TestCCUpgrade(t *testing.T) {
 		// and to have its pledge requirement deducted indicating it has expired.
 		// Importantly, power is NOT removed, because it was taken when fault was declared.
 		oldPower := miner.QAPowerForSector(actor.sectorSize, oldSector)
-		expectedFee := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, oldPower)
+		expectedFee := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, oldPower, rt.Epoch())
 		expectedPowerDelta := miner.NewPowerPairZero()
 		actor.applyRewards(rt, bigRewards, big.Zero())
 		actor.onDeadlineCron(rt, &cronConfig{
@@ -1575,7 +1575,7 @@ func TestCCUpgrade(t *testing.T) {
 		// At proving period cron expect to pay continued fee for old (now faulty) sector
 		// and to have its pledge requirement deducted indicating it has expired.
 		// Importantly, power is NOT removed, because it was taken when sector was skipped in Windowe PoSt.
-		faultFee := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, oldQAPower)
+		faultFee := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, oldQAPower, rt.Epoch())
 
 		actor.onDeadlineCron(rt, &cronConfig{
 			continuedFaultsPenalty:    faultFee,
@@ -1640,8 +1640,8 @@ func TestCCUpgrade(t *testing.T) {
 		sectorPower := miner.QAPowerForSector(actor.sectorSize, oldSector)
 		expectedFee := miner.PledgePenaltyForTermination(oldSector.ExpectedDayReward, rt.Epoch()-oldSector.Activation,
 			oldSector.ExpectedStoragePledge, actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth,
-			oldSector.ReplacedDayReward, oldSector.ReplacedSectorAge)
-		actor.applyRewards(rt, bigRewards, big.Zero())
+			oldSector.ReplacedDayReward, oldSector.ReplacedSectorAge, rt.CurrEpoch())
+		actor.applyRewards(rt, expectedFee, big.Zero())
 		powerDelta, pledgeDelta := actor.terminateSectors(rt, bf(uint64(oldSector.SectorNumber)), expectedFee)
 
 		// power and pledge should have been removed
@@ -1942,7 +1942,7 @@ func TestCCUpgrade(t *testing.T) {
 		rt := builderForHarness(actor).
 			WithBalance(bigBalance, big.Zero()).
 			Build(t)
-		rt.SetNetworkVersion(network.Version7) // Version 7 allows both seal proof types
+		rt.SetNetworkVersion(network.Version8) // Version 7 allows both seal proof types
 		actor.constructAndVerify(rt)
 
 		// Commit and prove first sector with V1
@@ -2094,7 +2094,7 @@ func TestWindowPost(t *testing.T) {
 		{
 			// Before version 7, the rejection is a side-effect of there being no active sectors after
 			// the duplicate is ignored.
-			rt.SetNetworkVersion(network.Version6)
+			rt.SetNetworkVersion(network.Version7)
 			rt.ExpectValidateCallerAddr(append(actor.controlAddrs, actor.owner, actor.worker)...)
 			rt.ExpectGetRandomnessTickets(crypto.DomainSeparationTag_PoStChainCommit, dlinfo.Challenge, nil, commitRand)
 			rt.ExpectAbortContainsMessage(exitcode.ErrIllegalArgument, "no active sectors", func() {
@@ -2105,7 +2105,7 @@ func TestWindowPost(t *testing.T) {
 
 		{
 			// From version 7, a duplicate is explicitly rejected.
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			rt.ExpectValidateCallerAddr(append(actor.controlAddrs, actor.owner, actor.worker)...)
 			rt.ExpectGetRandomnessTickets(crypto.DomainSeparationTag_PoStChainCommit, dlinfo.Challenge, nil, commitRand)
 			rt.ExpectAbortContainsMessage(exitcode.ErrIllegalArgument, "partition already proven", func() {
@@ -2166,7 +2166,7 @@ func TestWindowPost(t *testing.T) {
 			// Before network version 6, the miner would silently drop the sector infos for the partition already
 			// proven. This means that the sectors provided for verification would not match the sectors from
 			// which the proof was constructed by the miner worker, so will be rejected.
-			rt.SetNetworkVersion(network.Version6)
+			rt.SetNetworkVersion(network.Version7)
 			sectorsSubmitted := []*miner.SectorOnChainInfo{lastSector} // Doesn't match partitions
 			rt.ExpectAbortContainsMessage(exitcode.ErrIllegalArgument, "invalid PoSt", func() {
 				actor.submitWindowPoSt(rt, dlinfo, partitions, sectorsSubmitted, &poStConfig{
@@ -2177,7 +2177,7 @@ func TestWindowPost(t *testing.T) {
 			rt.Reset()
 
 			// From network version 7, the miner outright rejects attempts to prove a partition twice.
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			rt.ExpectAbortContainsMessage(exitcode.ErrIllegalArgument, "partition already proven", func() {
 				actor.submitWindowPoSt(rt, dlinfo, partitions, sectorsToProve, &poStConfig{
 					expectedPowerDelta: pwr,
@@ -2691,7 +2691,7 @@ func TestDeadlineCron(t *testing.T) {
 
 		// Un-recovered faults (incl failed recovery) are charged as ongoing faults
 		ongoingPwr := miner.PowerForSectors(actor.sectorSize, allSectors)
-		ongoingPenalty := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA)
+		ongoingPenalty := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA, rt.CurrEpoch)
 
 		advanceDeadline(rt, actor, &cronConfig{
 			continuedFaultsPenalty: ongoingPenalty,
@@ -2786,7 +2786,7 @@ func TestDeclareFaults(t *testing.T) {
 
 		// faults are charged at ongoing rate and no additional power is removed
 		ongoingPwr := miner.PowerForSectors(actor.sectorSize, allSectors)
-		ongoingPenalty := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA)
+		ongoingPenalty := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA, rt.CurrEpoch)
 
 		advanceDeadline(rt, actor, &cronConfig{
 			continuedFaultsPenalty: ongoingPenalty,
@@ -2850,7 +2850,7 @@ func TestDeclareRecoveries(t *testing.T) {
 
 		// Can't pay during this deadline so miner goes into fee debt
 		ongoingPwr := miner.PowerForSectors(actor.sectorSize, oneSector)
-		ff := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA)
+		ff := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA, rt.CurrEpoch)
 		advanceDeadline(rt, actor, &cronConfig{
 			continuedFaultsPenalty: big.Zero(), // fee is instead added to debt
 		})
@@ -3068,7 +3068,7 @@ func TestExtendSectorExpiration(t *testing.T) {
 
 	t.Run("fails to update deadline expiration queue until nv=7", func(t *testing.T) {
 		rt := builder.Build(t)
-		rt.SetNetworkVersion(network.Version6)
+		rt.SetNetworkVersion(network.Version7)
 		// set actor to use proof type valid for nv=6
 		proofTypeDefault := actor.sealProofType
 		actor.sealProofType = abi.RegisteredSealProof_StackedDrg32GiBV1
@@ -3253,7 +3253,7 @@ func TestExtendSectorExpiration(t *testing.T) {
 		rt := builderForHarness(actor).
 			WithBalance(bigBalance, big.Zero()).
 			Build(t)
-		rt.SetNetworkVersion(network.Version7)
+		rt.SetNetworkVersion(network.Version8)
 		actor.constructAndVerify(rt)
 
 		// Commit and prove first sector with V1
@@ -3305,10 +3305,10 @@ func TestTerminateSectors(t *testing.T) {
 		sectorSize, err := sector.SealProof.SectorSize()
 		require.NoError(t, err)
 		sectorPower := miner.QAPowerForSector(sectorSize, sector)
-		dayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, builtin.EpochsInDay)
-		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod)
+		dayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, builtin.EpochsInDay, rt.CurrEpoch)
+		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod, rt.CurrEpoch)
 		sectorAge := rt.Epoch() - sector.Activation
-		expectedFee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth, big.Zero(), 0)
+		expectedFee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth, big.Zero(), 0, rt.CurrEpoch)
 
 		sectors := bf(uint64(sector.SectorNumber))
 		actor.terminateSectors(rt, sectors, expectedFee)
@@ -3380,11 +3380,11 @@ func TestTerminateSectors(t *testing.T) {
 		actor.applyRewards(rt, bigRewards, big.Zero())
 
 		sectorPower := miner.QAPowerForSector(actor.sectorSize, newSector)
-		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod)
+		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod, rt.Epoch())
 		newSectorAge := rt.Epoch() - newSector.Activation
 		oldSectorAge := newSector.Activation - oldSector.Activation
 		expectedFee := miner.PledgePenaltyForTermination(newSector.ExpectedDayReward, newSectorAge, twentyDayReward,
-			actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth, oldSector.ExpectedDayReward, oldSectorAge)
+			actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth, oldSector.ExpectedDayReward, oldSectorAge, rt.CurrEpoch())
 
 		sectors := bf(uint64(newSector.SectorNumber))
 		actor.terminateSectors(rt, sectors, expectedFee)
@@ -3589,11 +3589,11 @@ func TestCompactPartitions(t *testing.T) {
 		sectorSize, err := tsector.SealProof.SectorSize()
 		require.NoError(t, err)
 		sectorPower := miner.QAPowerForSector(sectorSize, tsector)
-		dayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, builtin.EpochsInDay)
-		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod)
+		dayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, builtin.EpochsInDay, rt.CurrEpoch())
+		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod, rt.CurrEpoch())
 		sectorAge := rt.Epoch() - tsector.Activation
 		expectedFee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, actor.epochQAPowerSmooth,
-			sectorPower, actor.epochRewardSmooth, big.Zero(), 0)
+			sectorPower, actor.epochRewardSmooth, big.Zero(), 0, rt.CurrEpoch())
 
 		sectors := bitfield.NewFromSet([]uint64{uint64(sector1)})
 		actor.terminateSectors(rt, sectors, expectedFee)
@@ -4333,7 +4333,7 @@ func TestApplyRewards(t *testing.T) {
 		actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1)
 		{
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version5)
+			rt.SetNetworkVersion(network.Version6)
 			actor.constructAndVerify(rt)
 
 			rwd := abi.NewTokenAmount(1_000_000)
@@ -4343,7 +4343,7 @@ func TestApplyRewards(t *testing.T) {
 		}
 		{
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version6)
+			rt.SetNetworkVersion(network.Version7)
 			actor.constructAndVerify(rt)
 
 			rwd := abi.NewTokenAmount(1_000_000)
@@ -4978,7 +4978,7 @@ func (h *actorHarness) preCommitSector(rt *mock.Runtime, params *miner.PreCommit
 		if !conf.pledgeDelta.IsZero() {
 			rt.ExpectSend(builtin.StoragePowerActorAddr, builtin.MethodsPower.UpdatePledgeTotal, conf.pledgeDelta, big.Zero(), nil, exitcode.Ok)
 		}
-	} else if rt.NetworkVersion() < network.Version7 {
+	} else if rt.NetworkVersion() < network.Version8 {
 		pledgeDelta := immediatelyVestingFunds(rt, st).Neg()
 		if !pledgeDelta.IsZero() {
 			rt.ExpectSend(builtin.StoragePowerActorAddr, builtin.MethodsPower.UpdatePledgeTotal, &pledgeDelta, big.Zero(), nil, exitcode.Ok)
@@ -5087,7 +5087,7 @@ func (h *actorHarness) confirmSectorProofsValid(rt *mock.Runtime, conf proveComm
 				expectQAPower = big.Add(expectQAPower, qaPowerDelta)
 				expectRawPower = big.Add(expectRawPower, big.NewIntUnsigned(uint64(h.sectorSize)))
 				pledge := miner.InitialPledgeForPower(qaPowerDelta, h.baselinePower, h.epochRewardSmooth,
-					h.epochQAPowerSmooth, rt.TotalFilCircSupply())
+					h.epochQAPowerSmooth, rt.TotalFilCircSupply(), rt.CurrEpoch)
 
 				// if cc upgrade, pledge is max of new and replaced pledges
 				if precommitOnChain.Info.ReplaceCapacity {
@@ -5709,8 +5709,9 @@ func (h *actorHarness) compactPartitions(rt *mock.Runtime, deadline uint64, part
 }
 
 func (h *actorHarness) continuedFaultPenalty(sectors []*miner.SectorOnChainInfo) abi.TokenAmount {
+	chainEpoch := int64(5000)
 	_, qa := powerForSectors(h.sectorSize, sectors)
-	return miner.PledgePenaltyForContinuedFault(h.epochRewardSmooth, h.epochQAPowerSmooth, qa)
+	return miner.PledgePenaltyForContinuedFault(h.epochRewardSmooth, h.epochQAPowerSmooth, qa, chainEpoch)
 }
 
 func (h *actorHarness) powerPairForSectors(sectors []*miner.SectorOnChainInfo) miner.PowerPair {

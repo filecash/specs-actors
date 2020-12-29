@@ -103,6 +103,7 @@ func TestFaultFeeInvariants(t *testing.T) {
 
 	networkPower := abi.NewStoragePower(100 << 50)
 	powerEstimate := smoothing.TestingConstantEstimate(networkPower)
+	chainEpoch := int64(5000)
 
 	// constant filter estimate cumsum ratio is just multiplication and division
 	// test that internal precision of BR calculation does not cost accuracy
@@ -116,14 +117,14 @@ func TestFaultFeeInvariants(t *testing.T) {
 		epochsPerDay := big.NewInt(builtin.EpochsInDay)
 		smallPowerBRNum := big.Mul(big.Mul(smallPower, epochsPerDay), tensOfFIL)
 		hugePowerBRNum := big.Mul(big.Mul(hugePower, epochsPerDay), tensOfFIL)
-
+		ChainEpoch := int64(5000)
 		// QAPower = Space * AverageQuality
 		// 10s of EiBs -- lower range
 		// 1.2e18 * 10 bytes * 1 quality ~ 1e19
 		tensOfEiBs := big.Mul(abi.NewStoragePower(1e18), big.NewInt(10))
 		lowPowerEstimate := smoothing.TestingConstantEstimate(tensOfEiBs)
-		brSmallLow := ExpectedRewardForPower(rewardEstimate, lowPowerEstimate, smallPower, builtin.EpochsInDay)
-		brHugeLow := ExpectedRewardForPower(rewardEstimate, lowPowerEstimate, hugePower, builtin.EpochsInDay)
+		brSmallLow := ExpectedRewardForPower(rewardEstimate, lowPowerEstimate, smallPower, builtin.EpochsInDay, ChainEpoch)
+		brHugeLow := ExpectedRewardForPower(rewardEstimate, lowPowerEstimate, hugePower, builtin.EpochsInDay, ChainEpoch)
 		assert.Equal(t, big.Div(smallPowerBRNum, tensOfEiBs), brSmallLow)
 		assert.Equal(t, big.Div(hugePowerBRNum, tensOfEiBs), brHugeLow)
 
@@ -131,8 +132,8 @@ func TestFaultFeeInvariants(t *testing.T) {
 		// 1.2e18 * 100 bytes * 5 quality ~ 6e20
 		hundredsOfEiBs := big.Mul(abi.NewStoragePower(1e18), big.NewInt(6e2))
 		midPowerEstimate := smoothing.TestingConstantEstimate(hundredsOfEiBs)
-		brSmallMid := ExpectedRewardForPower(rewardEstimate, midPowerEstimate, smallPower, builtin.EpochsInDay)
-		brHugeMid := ExpectedRewardForPower(rewardEstimate, midPowerEstimate, hugePower, builtin.EpochsInDay)
+		brSmallMid := ExpectedRewardForPower(rewardEstimate, midPowerEstimate, smallPower, builtin.EpochsInDay, ChainEpoch)
+		brHugeMid := ExpectedRewardForPower(rewardEstimate, midPowerEstimate, hugePower, builtin.EpochsInDay, ChainEpoch)
 		assert.Equal(t, big.Div(smallPowerBRNum, hundredsOfEiBs), brSmallMid)
 		assert.Equal(t, big.Div(hugePowerBRNum, hundredsOfEiBs), brHugeMid)
 
@@ -140,8 +141,8 @@ func TestFaultFeeInvariants(t *testing.T) {
 		// 1.2e18 * 1000 bytes * 10 quality = 1.2e22 ~ 2e22
 		thousandsOfEiBs := big.Mul(abi.NewStoragePower(1e18), big.NewInt(2e4))
 		upperPowerEstimate := smoothing.TestingConstantEstimate(thousandsOfEiBs)
-		brSmallUpper := ExpectedRewardForPower(rewardEstimate, upperPowerEstimate, smallPower, builtin.EpochsInDay)
-		brHugeUpper := ExpectedRewardForPower(rewardEstimate, upperPowerEstimate, hugePower, builtin.EpochsInDay)
+		brSmallUpper := ExpectedRewardForPower(rewardEstimate, upperPowerEstimate, smallPower, builtin.EpochsInDay, ChainEpoch)
+		brHugeUpper := ExpectedRewardForPower(rewardEstimate, upperPowerEstimate, hugePower, builtin.EpochsInDay, ChainEpoch)
 		assert.Equal(t, big.Div(smallPowerBRNum, thousandsOfEiBs), brSmallUpper)
 		assert.Equal(t, big.Div(hugePowerBRNum, thousandsOfEiBs), brHugeUpper)
 	})
@@ -154,11 +155,11 @@ func TestFaultFeeInvariants(t *testing.T) {
 		totalFaultPower := big.Add(big.Add(faultySectorAPower, faultySectorBPower), faultySectorCPower)
 
 		// Declared faults
-		ffA := PledgePenaltyForContinuedFault(rewardEstimate, powerEstimate, faultySectorAPower)
-		ffB := PledgePenaltyForContinuedFault(rewardEstimate, powerEstimate, faultySectorBPower)
-		ffC := PledgePenaltyForContinuedFault(rewardEstimate, powerEstimate, faultySectorCPower)
+		ffA := PledgePenaltyForContinuedFault(rewardEstimate, powerEstimate, faultySectorAPower, chainEpoch)
+		ffB := PledgePenaltyForContinuedFault(rewardEstimate, powerEstimate, faultySectorBPower, chainEpoch)
+		ffC := PledgePenaltyForContinuedFault(rewardEstimate, powerEstimate, faultySectorCPower, chainEpoch)
 
-		ffAll := PledgePenaltyForContinuedFault(rewardEstimate, powerEstimate, totalFaultPower)
+		ffAll := PledgePenaltyForContinuedFault(rewardEstimate, powerEstimate, totalFaultPower, chainEpoch)
 
 		// Because we can introduce rounding error between 1 and zero for every penalty calculation
 		// we can at best expect n calculations of 1 power to be within n of 1 calculation of n powers.
@@ -167,11 +168,11 @@ func TestFaultFeeInvariants(t *testing.T) {
 		assert.True(t, diff.LessThan(big.NewInt(3)))
 
 		// Undeclared faults
-		spA := PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, faultySectorAPower)
-		spB := PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, faultySectorBPower)
-		spC := PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, faultySectorCPower)
+		spA := PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, faultySectorAPower, chainEpoch)
+		spB := PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, faultySectorBPower, chainEpoch)
+		spC := PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, faultySectorCPower, chainEpoch)
 
-		spAll := PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, totalFaultPower)
+		spAll := PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, totalFaultPower, chainEpoch)
 
 		// Because we can introduce rounding error between 1 and zero for every penalty calculation
 		// we can at best expect n calculations of 1 power to be within n of 1 calculation of n powers.
