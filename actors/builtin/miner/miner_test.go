@@ -424,7 +424,7 @@ func TestCommitments(t *testing.T) {
 		assert.Equal(t, verifiedDealWeight, onChainPrecommit.VerifiedDealWeight)
 
 		pwrEstimate := miner.QAPowerForWeight(actor.sectorSize, precommit.Info.Expiration-precommitEpoch, onChainPrecommit.DealWeight, onChainPrecommit.VerifiedDealWeight)
-		expectedDeposit := miner.PreCommitDepositForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, pwrEstimate)
+		expectedDeposit := miner.PreCommitDepositForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, pwrEstimate, rt.CurrEpoch)
 		assert.Equal(t, expectedDeposit, onChainPrecommit.PreCommitDeposit)
 
 		// expect total precommit deposit to equal our new deposit
@@ -450,7 +450,7 @@ func TestCommitments(t *testing.T) {
 		qaPower := miner.QAPowerForWeight(actor.sectorSize, precommit.Info.Expiration-rt.Epoch(), onChainPrecommit.DealWeight, onChainPrecommit.VerifiedDealWeight)
 		assert.Equal(t, expectedPower, qaPower)
 		expectedInitialPledge := miner.InitialPledgeForPower(qaPower, actor.baselinePower, actor.epochRewardSmooth,
-			actor.epochQAPowerSmooth, rt.TotalFilCircSupply())
+			actor.epochQAPowerSmooth, rt.TotalFilCircSupply(), rt.CurrEpoch)
 		assert.Equal(t, expectedInitialPledge, st.InitialPledge)
 
 		// expect new onchain sector
@@ -1292,7 +1292,7 @@ func TestCCUpgrade(t *testing.T) {
 		// and to have its pledge requirement deducted indicating it has expired.
 		// Importantly, power is NOT removed, because it was taken when fault was declared.
 		oldPower := miner.QAPowerForSector(actor.sectorSize, oldSector)
-		expectedFee := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, oldPower)
+		expectedFee := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, oldPower, rt.Epoch())
 		expectedPowerDelta := miner.NewPowerPairZero()
 		actor.applyRewards(rt, expectedFee, big.Zero())
 		actor.onDeadlineCron(rt, &cronConfig{
@@ -1343,7 +1343,7 @@ func TestCCUpgrade(t *testing.T) {
 		// At proving period cron expect to pay continued fee for old (now faulty) sector
 		// and to have its pledge requirement deducted indicating it has expired.
 		// Importantly, power is NOT removed, because it was taken when sector was skipped in Windowe PoSt.
-		faultFee := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, oldQAPower)
+		faultFee := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, oldQAPower, rt.Epoch())
 
 		actor.onDeadlineCron(rt, &cronConfig{
 			continuedFaultsPenalty:    faultFee,
@@ -1408,7 +1408,7 @@ func TestCCUpgrade(t *testing.T) {
 		sectorPower := miner.QAPowerForSector(actor.sectorSize, oldSector)
 		expectedFee := miner.PledgePenaltyForTermination(oldSector.ExpectedDayReward, rt.Epoch()-oldSector.Activation,
 			oldSector.ExpectedStoragePledge, actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth,
-			oldSector.ReplacedDayReward, oldSector.ReplacedSectorAge)
+			oldSector.ReplacedDayReward, oldSector.ReplacedSectorAge, rt.CurrEpoch())
 		actor.applyRewards(rt, expectedFee, big.Zero())
 		powerDelta, pledgeDelta := actor.terminateSectors(rt, bf(uint64(oldSector.SectorNumber)), expectedFee)
 
@@ -2296,7 +2296,7 @@ func TestDeadlineCron(t *testing.T) {
 
 		// Un-recovered faults (incl failed recovery) are charged as ongoing faults
 		ongoingPwr := miner.PowerForSectors(actor.sectorSize, allSectors)
-		ongoingPenalty := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA)
+		ongoingPenalty := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA, rt.CurrEpoch)
 
 		advanceDeadline(rt, actor, &cronConfig{
 			continuedFaultsPenalty: ongoingPenalty,
@@ -2393,7 +2393,7 @@ func TestDeclareFaults(t *testing.T) {
 
 		// faults are charged at ongoing rate and no additional power is removed
 		ongoingPwr := miner.PowerForSectors(actor.sectorSize, allSectors)
-		ongoingPenalty := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA)
+		ongoingPenalty := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA, rt.CurrEpoch)
 
 		advanceDeadline(rt, actor, &cronConfig{
 			continuedFaultsPenalty: ongoingPenalty,
@@ -2457,7 +2457,7 @@ func TestDeclareRecoveries(t *testing.T) {
 
 		// Can't pay during this deadline so miner goes into fee debt
 		ongoingPwr := miner.PowerForSectors(actor.sectorSize, oneSector)
-		ff := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA)
+		ff := miner.PledgePenaltyForContinuedFault(actor.epochRewardSmooth, actor.epochQAPowerSmooth, ongoingPwr.QA, rt.CurrEpoch)
 		advanceDeadline(rt, actor, &cronConfig{
 			continuedFaultsPenalty: big.Zero(), // fee is instead added to debt
 		})
@@ -2837,10 +2837,10 @@ func TestTerminateSectors(t *testing.T) {
 		sectorSize, err := sector.SealProof.SectorSize()
 		require.NoError(t, err)
 		sectorPower := miner.QAPowerForSector(sectorSize, sector)
-		dayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, builtin.EpochsInDay)
-		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod)
+		dayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, builtin.EpochsInDay, rt.CurrEpoch)
+		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod, rt.CurrEpoch)
 		sectorAge := rt.Epoch() - sector.Activation
-		expectedFee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth, big.Zero(), 0)
+		expectedFee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth, big.Zero(), 0, rt.CurrEpoch)
 
 		sectors := bf(uint64(sector.SectorNumber))
 		actor.terminateSectors(rt, sectors, expectedFee)
@@ -2911,11 +2911,11 @@ func TestTerminateSectors(t *testing.T) {
 		// advance clock a little and terminate new sector
 		rt.SetEpoch(rt.Epoch() + 5_000)
 		sectorPower := miner.QAPowerForSector(actor.sectorSize, newSector)
-		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod)
+		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod, rt.Epoch())
 		newSectorAge := rt.Epoch() - newSector.Activation
 		oldSectorAge := newSector.Activation - oldSector.Activation
 		expectedFee := miner.PledgePenaltyForTermination(newSector.ExpectedDayReward, newSectorAge, twentyDayReward,
-			actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth, oldSector.ExpectedDayReward, oldSectorAge)
+			actor.epochQAPowerSmooth, sectorPower, actor.epochRewardSmooth, oldSector.ExpectedDayReward, oldSectorAge, rt.CurrEpoch())
 
 		sectors := bf(uint64(newSector.SectorNumber))
 		actor.terminateSectors(rt, sectors, expectedFee)
@@ -3116,11 +3116,11 @@ func TestCompactPartitions(t *testing.T) {
 		sectorSize, err := tsector.SealProof.SectorSize()
 		require.NoError(t, err)
 		sectorPower := miner.QAPowerForSector(sectorSize, tsector)
-		dayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, builtin.EpochsInDay)
-		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod)
+		dayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, builtin.EpochsInDay, rt.CurrEpoch())
+		twentyDayReward := miner.ExpectedRewardForPower(actor.epochRewardSmooth, actor.epochQAPowerSmooth, sectorPower, miner.InitialPledgeProjectionPeriod, rt.CurrEpoch())
 		sectorAge := rt.Epoch() - tsector.Activation
 		expectedFee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, actor.epochQAPowerSmooth,
-			sectorPower, actor.epochRewardSmooth, big.Zero(), 0)
+			sectorPower, actor.epochRewardSmooth, big.Zero(), 0, rt.CurrEpoch())
 
 		sectors := bitfield.NewFromSet([]uint64{uint64(sector1)})
 		actor.terminateSectors(rt, sectors, expectedFee)
@@ -4564,7 +4564,7 @@ func (h *actorHarness) confirmSectorProofsValid(rt *mock.Runtime, conf proveComm
 				expectQAPower = big.Add(expectQAPower, qaPowerDelta)
 				expectRawPower = big.Add(expectRawPower, big.NewIntUnsigned(uint64(h.sectorSize)))
 				pledge := miner.InitialPledgeForPower(qaPowerDelta, h.baselinePower, h.epochRewardSmooth,
-					h.epochQAPowerSmooth, rt.TotalFilCircSupply())
+					h.epochQAPowerSmooth, rt.TotalFilCircSupply(), rt.CurrEpoch)
 
 				// if cc upgrade, pledge is max of new and replaced pledges
 				if precommitOnChain.Info.ReplaceCapacity {
@@ -5173,8 +5173,9 @@ func (h *actorHarness) compactPartitions(rt *mock.Runtime, deadline uint64, part
 }
 
 func (h *actorHarness) continuedFaultPenalty(sectors []*miner.SectorOnChainInfo) abi.TokenAmount {
+	chainEpoch := int64(5000)
 	_, qa := powerForSectors(h.sectorSize, sectors)
-	return miner.PledgePenaltyForContinuedFault(h.epochRewardSmooth, h.epochQAPowerSmooth, qa)
+	return miner.PledgePenaltyForContinuedFault(h.epochRewardSmooth, h.epochQAPowerSmooth, qa, chainEpoch)
 }
 
 func (h *actorHarness) powerPairForSectors(sectors []*miner.SectorOnChainInfo) miner.PowerPair {

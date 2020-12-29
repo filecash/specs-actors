@@ -18,11 +18,11 @@ import (
 	"github.com/filecoin-project/specs-actors/v2/actors/util/smoothing"
 )
 
-// genesis power in bytes = 750,000 GiB
-var InitialQAPowerEstimatePosition = big.Mul(big.NewInt(750_000), big.NewInt(1<<30))
+// genesis power in bytes = 7,500 GiB
+var InitialQAPowerEstimatePosition = big.Mul(big.NewInt(7_500), big.NewInt(1<<30))
 
-// max chain throughput in bytes per epoch = 120 ProveCommits / epoch = 3,840 GiB
-var InitialQAPowerEstimateVelocity = big.Mul(big.NewInt(3_840), big.NewInt(1<<30))
+// max chain throughput in bytes per epoch = 120 ProveCommits / epoch = 480 GiB
+var InitialQAPowerEstimateVelocity = big.Mul(big.NewInt(40), big.NewInt(1<<30))
 
 type State struct {
 	TotalRawBytePower abi.StoragePower
