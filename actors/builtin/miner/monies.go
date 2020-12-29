@@ -26,6 +26,13 @@ var InitialPledgeProjectionPeriod = abi.ChainEpoch(InitialPledgeFactor) * builti
 // This does not divide evenly, so the result is fractionally smaller.
 var InitialPledgeMaxPerByte = big.Div(big.NewInt(1e18), big.NewInt(32<<30))
 
+//Factor of 4GiB and 16GiB
+//https://www.wolframalpha.com/input/?i=e%5Eln%280.909753%5E%2832-x%29%29%2Fln%281.06493%29%2F%28x%2F32%29
+var InitialPleFactorHeight = abi.ChainEpoch(-1)
+var InitialFactorof4G big.Int
+var InitialFactorof16G big.Int
+var InitialFactorDenom big.Int
+
 // Multiplier of share of circulating money supply for consensus pledge required to commit a sector.
 // This pledge is lost if a sector is terminated before its full committed lifetime.
 var InitialPledgeLockTarget = builtin.BigFrac{
@@ -44,10 +51,20 @@ var ContinuedFaultProjectionPeriod = abi.ChainEpoch((builtin.EpochsInDay * Conti
 
 var TerminationPenaltyLowerBoundProjectionPeriod = abi.ChainEpoch((builtin.EpochsInDay * 35) / 10) // PARAM_SPEC
 
+var UpgradeRcHeight = abi.ChainEpoch(-1)
+var ratioCap_RcHeight big.Int
+
 // Fraction of assumed block reward penalized when a sector is terminated.
 var TerminationRewardFactor = builtin.BigFrac{ // PARAM_SPEC
 	Numerator:   big.NewInt(1),
 	Denominator: big.NewInt(2),
+}
+
+func init() {
+	ratioCap_RcHeight = big.MustFromString("75278536096441317196864365299548189464220907312")
+	InitialFactorof4G = big.MustFromString("899983662598")
+	InitialFactorof16G = big.MustFromString("699991357126")
+	InitialFactorDenom = big.MustFromString("100000000000")
 }
 
 // Maximum number of lifetime days penalized when a sector is terminated.
@@ -65,12 +82,15 @@ var LockedRewardFactorDenomV6 = big.NewInt(100)
 // BR(t) = ProjectedRewardFraction(t) * SectorQualityAdjustedPower
 // ProjectedRewardFraction(t) is the sum of estimated reward over estimated total power
 // over all epochs in the projection period [t t+projectionDuration]
-func ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, qaSectorPower abi.StoragePower, projectionDuration abi.ChainEpoch) abi.TokenAmount {
+func ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, qaSectorPower abi.StoragePower, projectionDuration abi.ChainEpoch, currHeight abi.ChainEpoch) abi.TokenAmount {
 	networkQAPowerSmoothed := networkQAPowerEstimate.Estimate()
 	if networkQAPowerSmoothed.IsZero() {
 		return rewardEstimate.Estimate()
 	}
 	expectedRewardForProvingPeriod := smoothing.ExtrapolatedCumSumOfRatio(projectionDuration, 0, rewardEstimate, networkQAPowerEstimate)
+	if currHeight >= UpgradeRcHeight {
+		expectedRewardForProvingPeriod = big.Min(expectedRewardForProvingPeriod, ratioCap_RcHeight)
+	}
 	br128 := big.Mul(qaSectorPower, expectedRewardForProvingPeriod) // Q.0 * Q.128 => Q.128
 	br := big.Rsh(br128, math.Precision128)
 	return big.Max(br, big.Zero()) // negative BR is clamped at 0
@@ -79,15 +99,15 @@ func ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate smoothing.Fil
 // The penalty for a sector continuing faulty for another proving period.
 // It is a projection of the expected reward earned by the sector.
 // Also known as "FF(t)"
-func PledgePenaltyForContinuedFault(rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, qaSectorPower abi.StoragePower) abi.TokenAmount {
-	return ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate, qaSectorPower, ContinuedFaultProjectionPeriod)
+func PledgePenaltyForContinuedFault(rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, qaSectorPower abi.StoragePower, currHeight abi.ChainEpoch) abi.TokenAmount {
+	return ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate, qaSectorPower, ContinuedFaultProjectionPeriod, currHeight)
 }
 
 // Lower bound on the penalty for a terminating sector.
 // It is a projection of the expected reward earned by the sector.
 // Also known as "SP(t)"
-func PledgePenaltyForTerminationLowerBound(rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, qaSectorPower abi.StoragePower) abi.TokenAmount {
-	return ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate, qaSectorPower, TerminationPenaltyLowerBoundProjectionPeriod)
+func PledgePenaltyForTerminationLowerBound(rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, qaSectorPower abi.StoragePower, currHeight abi.ChainEpoch) abi.TokenAmount {
+	return ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate, qaSectorPower, TerminationPenaltyLowerBoundProjectionPeriod, currHeight)
 }
 
 // Penalty to locked pledge collateral for the termination of a sector before scheduled expiry.
@@ -97,7 +117,7 @@ func PledgePenaltyForTerminationLowerBound(rewardEstimate, networkQAPowerEstimat
 func PledgePenaltyForTermination(dayReward abi.TokenAmount, sectorAge abi.ChainEpoch,
 	twentyDayRewardAtActivation abi.TokenAmount, networkQAPowerEstimate smoothing.FilterEstimate,
 	qaSectorPower abi.StoragePower, rewardEstimate smoothing.FilterEstimate, replacedDayReward abi.TokenAmount,
-	replacedSectorAge abi.ChainEpoch) abi.TokenAmount {
+	replacedSectorAge abi.ChainEpoch, currHeight abi.ChainEpoch) abi.TokenAmount {
 	// max(SP(t), BR(StartEpoch, 20d) + BR(StartEpoch, 1d) * terminationRewardFactor * min(SectorAgeInDays, 140))
 	// and sectorAgeInDays = sectorAge / EpochsInDay
 	lifetimeCap := abi.ChainEpoch(TerminationLifetimeCap) * builtin.EpochsInDay
@@ -111,7 +131,7 @@ func PledgePenaltyForTermination(dayReward abi.TokenAmount, sectorAge abi.ChainE
 	penalizedReward := big.Mul(expectedReward, TerminationRewardFactor.Numerator)
 
 	return big.Max(
-		PledgePenaltyForTerminationLowerBound(rewardEstimate, networkQAPowerEstimate, qaSectorPower),
+		PledgePenaltyForTerminationLowerBound(rewardEstimate, networkQAPowerEstimate, qaSectorPower, currHeight),
 		big.Add(
 			twentyDayRewardAtActivation,
 			big.Div(
@@ -121,8 +141,8 @@ func PledgePenaltyForTermination(dayReward abi.TokenAmount, sectorAge abi.ChainE
 
 // Computes the PreCommit deposit given sector qa weight and current network conditions.
 // PreCommit Deposit = BR(PreCommitDepositProjectionPeriod)
-func PreCommitDepositForPower(rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, qaSectorPower abi.StoragePower) abi.TokenAmount {
-	return ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate, qaSectorPower, PreCommitDepositProjectionPeriod)
+func PreCommitDepositForPower(rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, qaSectorPower abi.StoragePower, currHeight abi.ChainEpoch) abi.TokenAmount {
+	return ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate, qaSectorPower, PreCommitDepositProjectionPeriod, currHeight)
 }
 
 // Computes the pledge requirement for committing new quality-adjusted power to the network, given the current
@@ -136,8 +156,8 @@ func PreCommitDepositForPower(rewardEstimate, networkQAPowerEstimate smoothing.F
 // AdditionalIP(t) = LockTarget(t)*PledgeShare(t)
 // LockTarget = (LockTargetFactorNum / LockTargetFactorDenom) * FILCirculatingSupply(t)
 // PledgeShare(t) = sectorQAPower / max(BaselinePower(t), NetworkQAPower(t))
-func InitialPledgeForPower(qaPower, baselinePower abi.StoragePower, rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, circulatingSupply abi.TokenAmount) abi.TokenAmount {
-	ipBase := ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate, qaPower, InitialPledgeProjectionPeriod)
+func InitialPledgeForPower(qaPower, baselinePower abi.StoragePower, rewardEstimate, networkQAPowerEstimate smoothing.FilterEstimate, circulatingSupply abi.TokenAmount, currHeight abi.ChainEpoch) abi.TokenAmount {
+	ipBase := ExpectedRewardForPower(rewardEstimate, networkQAPowerEstimate, qaPower, InitialPledgeProjectionPeriod, currHeight)
 
 	lockTargetNum := big.Mul(InitialPledgeLockTarget.Numerator, circulatingSupply)
 	lockTargetDenom := InitialPledgeLockTarget.Denominator
@@ -150,6 +170,13 @@ func InitialPledgeForPower(qaPower, baselinePower abi.StoragePower, rewardEstima
 
 	nominalPledge := big.Add(ipBase, additionalIP)
 	spaceRacePledgeCap := big.Mul(InitialPledgeMaxPerByte, qaPower)
+	if currHeight >= InitialPleFactorHeight {
+		if qaPower.LessThan(big.NewInt(16 << 30)) {
+			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(InitialPledgeMaxPerByte, qaPower), InitialFactorof4G), InitialFactorDenom)
+			} else {
+			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(InitialPledgeMaxPerByte, qaPower), InitialFactorof16G), InitialFactorDenom)
+			}
+		}
 	return big.Min(nominalPledge, spaceRacePledgeCap)
 }
 

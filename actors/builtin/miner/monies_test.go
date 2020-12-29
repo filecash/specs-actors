@@ -12,8 +12,11 @@ import (
 	"github.com/filecoin-project/specs-actors/v2/actors/util/smoothing"
 )
 
+var chainEpoch = int64(5000)
+
 // Test termination fee
 func TestPledgePenaltyForTermination(t *testing.T) {
+	var chainEpoch = int64(5000)
 	epochTargetReward := abi.NewTokenAmount(1 << 50)
 	qaSectorPower := abi.NewStoragePower(1 << 36)
 	networkQAPower := abi.NewStoragePower(1 << 50)
@@ -21,7 +24,7 @@ func TestPledgePenaltyForTermination(t *testing.T) {
 	rewardEstimate := smoothing.TestingConstantEstimate(epochTargetReward)
 	powerEstimate := smoothing.TestingConstantEstimate(networkQAPower)
 
-	undeclaredPenalty := miner.PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, qaSectorPower)
+	undeclaredPenalty := miner.PledgePenaltyForTerminationLowerBound(rewardEstimate, powerEstimate, qaSectorPower, chainEpoch)
 	bigInitialPledgeFactor := big.NewInt(int64(miner.InitialPledgeFactor))
 	bigLifetimeCap := big.NewInt(int64(miner.TerminationLifetimeCap))
 
@@ -32,7 +35,7 @@ func TestPledgePenaltyForTermination(t *testing.T) {
 		twentyDayReward := big.Mul(dayReward, bigInitialPledgeFactor)
 		sectorAge := 20 * abi.ChainEpoch(builtin.EpochsInDay)
 
-		fee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, powerEstimate, qaSectorPower, rewardEstimate, big.Zero(), 0)
+		fee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, powerEstimate, qaSectorPower, rewardEstimate, big.Zero(), 0, chainEpoch)
 
 		assert.Equal(t, undeclaredPenalty, fee)
 	})
@@ -45,7 +48,7 @@ func TestPledgePenaltyForTermination(t *testing.T) {
 		sectorAgeInDays := int64(20)
 		sectorAge := abi.ChainEpoch(sectorAgeInDays * builtin.EpochsInDay)
 
-		fee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, powerEstimate, qaSectorPower, rewardEstimate, big.Zero(), 0)
+		fee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, powerEstimate, qaSectorPower, rewardEstimate, big.Zero(), 0, chainEpoch)
 
 		// expect fee to be pledge + br * age * factor where br = pledge/initialPledgeFactor
 		expectedFee := big.Add(
@@ -62,7 +65,7 @@ func TestPledgePenaltyForTermination(t *testing.T) {
 		twentyDayReward := big.Mul(dayReward, bigInitialPledgeFactor)
 		sectorAge := abi.ChainEpoch(500 * builtin.EpochsInDay)
 
-		fee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, powerEstimate, qaSectorPower, rewardEstimate, big.Zero(), 0)
+		fee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, powerEstimate, qaSectorPower, rewardEstimate, big.Zero(), 0, chainEpoch)
 
 		// expect fee to be pledge * br * age-cap * factor where br = pledge/initialPledgeFactor
 		expectedFee := big.Add(
@@ -85,10 +88,10 @@ func TestPledgePenaltyForTermination(t *testing.T) {
 		power := big.NewInt(1)
 
 		// fee for old sector if had terminated when it was replaced
-		unreplacedFee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, powerEstimate, power, rewardEstimate, big.Zero(), 0)
+		unreplacedFee := miner.PledgePenaltyForTermination(dayReward, sectorAge, twentyDayReward, powerEstimate, power, rewardEstimate, big.Zero(), 0, chainEpoch)
 
 		// actual fee including replacement parameters
-		actualFee := miner.PledgePenaltyForTermination(dayReward, replacementAge, twentyDayReward, powerEstimate, power, rewardEstimate, dayReward, sectorAge-replacementAge)
+		actualFee := miner.PledgePenaltyForTermination(dayReward, replacementAge, twentyDayReward, powerEstimate, power, rewardEstimate, dayReward, sectorAge-replacementAge, chainEpoch)
 
 		assert.Equal(t, unreplacedFee, actualFee)
 	})
@@ -99,16 +102,16 @@ func TestPledgePenaltyForTermination(t *testing.T) {
 		dayReward := big.Div(initialPledge, bigInitialPledgeFactor)
 		twentyDayReward := big.Mul(dayReward, bigInitialPledgeFactor)
 		sectorAge := abi.ChainEpoch(20 * builtin.EpochsInDay)
-		replacementAge := abi.ChainEpoch(miner.TerminationLifetimeCap+ 1) * builtin.EpochsInDay
+		replacementAge := abi.ChainEpoch(miner.TerminationLifetimeCap+1) * builtin.EpochsInDay
 
 		// use low power, so we don't test SP=SP
 		power := big.NewInt(1)
 
 		// fee for new sector with no replacement
-		noReplace := miner.PledgePenaltyForTermination(dayReward, replacementAge, twentyDayReward, powerEstimate, power, rewardEstimate, big.Zero(), 0)
+		noReplace := miner.PledgePenaltyForTermination(dayReward, replacementAge, twentyDayReward, powerEstimate, power, rewardEstimate, big.Zero(), 0, chainEpoch)
 
 		// actual fee including replacement parameters
-		withReplace := miner.PledgePenaltyForTermination(dayReward, replacementAge, twentyDayReward, powerEstimate, power, rewardEstimate, dayReward, sectorAge)
+		withReplace := miner.PledgePenaltyForTermination(dayReward, replacementAge, twentyDayReward, powerEstimate, power, rewardEstimate, dayReward, sectorAge, chainEpoch)
 
 		assert.Equal(t, noReplace, withReplace)
 	})
@@ -137,7 +140,7 @@ func TestPledgePenaltyForTermination(t *testing.T) {
 		)
 		expectedFee := big.Sum(twentyDayReward, oldPenalty, newPenalty)
 
-		fee := miner.PledgePenaltyForTermination(dayReward, replacementAge, twentyDayReward, powerEstimate, power, rewardEstimate, oldDayReward, oldSectorAge)
+		fee := miner.PledgePenaltyForTermination(dayReward, replacementAge, twentyDayReward, powerEstimate, power, rewardEstimate, oldDayReward, oldSectorAge, chainEpoch)
 
 		assert.Equal(t, expectedFee, fee)
 	})
