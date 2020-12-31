@@ -173,10 +173,10 @@ func InitialPledgeForPower(qaPower, baselinePower abi.StoragePower, rewardEstima
 	if currHeight >= InitialPleFactorHeight {
 		if qaPower.LessThan(big.NewInt(16 << 30)) {
 			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(InitialPledgeMaxPerByte, qaPower), InitialFactorof4G), InitialFactorDenom)
-			} else {
+		} else {
 			spaceRacePledgeCap = big.Div(big.Mul(big.Mul(InitialPledgeMaxPerByte, qaPower), InitialFactorof16G), InitialFactorDenom)
-			}
 		}
+	}
 	return big.Min(nominalPledge, spaceRacePledgeCap)
 }
 
@@ -206,9 +206,9 @@ func ConsensusFaultPenalty(thisEpochReward abi.TokenAmount) abi.TokenAmount {
 func LockedRewardFromReward(reward abi.TokenAmount, nv network.Version) (abi.TokenAmount, *VestSpec) {
 	lockAmount := reward
 	spec := &RewardVestingSpec
-	if nv >= network.Version6 {
-		// Locked amount is 75% of award.
-		lockAmount = big.Div(big.Mul(reward, LockedRewardFactorNumV6), LockedRewardFactorDenomV6)
-	}
+	// if nv >= network.Version6 {
+	// 	// Locked amount is 75% of award.
+	// 	lockAmount = big.Div(big.Mul(reward, LockedRewardFactorNumV6), LockedRewardFactorDenomV6)
+	// }
 	return lockAmount, spec
 }

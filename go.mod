@@ -8,7 +8,7 @@ require (
 	github.com/filecoin-project/go-bitfield v0.2.0
 	github.com/filecoin-project/go-hamt-ipld v0.1.5
 	github.com/filecoin-project/go-hamt-ipld/v2 v2.0.0
-	github.com/filecoin-project/go-state-types v0.0.0-20200928172055-2df22083d8ab
+	github.com/filecoin-project/go-state-types v0.0.0-20201102161440-c8033295a1fc
 	github.com/filecoin-project/specs-actors v0.9.13
 	github.com/ipfs/go-block-format v0.0.2
 	github.com/ipfs/go-cid v0.0.7
@@ -24,4 +24,4 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 )
 
-replace github.com/filecoin-project/go-state-types => github.com/filecash/go-state-types v0.0.0-20201229082727-cf7619f3d1e5
+replace github.com/filecoin-project/go-state-types => ../go-state-types
