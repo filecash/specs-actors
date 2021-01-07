@@ -104,6 +104,12 @@ var PoStProofPolicies = map[stabi.RegisteredPoStProof]*PoStProofPolicy{
 	stabi.RegisteredPoStProof_StackedDrgWindow64GiBV1: {
 		WindowPoStPartitionSectors: 2300,
 	},
+	stabi.RegisteredPoStProof_StackedDrgWindow4GiBV1: {
+		WindowPoStPartitionSectors: 600,
+	},
+	stabi.RegisteredPoStProof_StackedDrgWindow16GiBV1: {
+		WindowPoStPartitionSectors: 2300,
+	},
 	// Winning PoSt proof types omitted.
 }
 
