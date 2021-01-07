@@ -7,8 +7,8 @@ import (
 
 // Policy values associated with a seal proof type.
 type SealProofPolicy struct {
-	SectorMaxLifetime          stabi.ChainEpoch
-	ConsensusMinerMinPower     stabi.StoragePower
+	SectorMaxLifetime      stabi.ChainEpoch
+	ConsensusMinerMinPower stabi.StoragePower
 }
 
 // For all Stacked DRG sectors, the max is 5 years
@@ -17,32 +17,32 @@ const fiveYears = stabi.ChainEpoch(5 * epochsPerYear)
 
 var SealProofPolicies = map[stabi.RegisteredSealProof]*SealProofPolicy{
 	stabi.RegisteredSealProof_StackedDrg2KiBV1: {
-		SectorMaxLifetime:          fiveYears,
-		ConsensusMinerMinPower:     stabi.NewStoragePower(0),
+		SectorMaxLifetime:      fiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(0),
 	},
 	stabi.RegisteredSealProof_StackedDrg8MiBV1: {
-		SectorMaxLifetime:          fiveYears,
-		ConsensusMinerMinPower:     stabi.NewStoragePower(16 << 20),
+		SectorMaxLifetime:      fiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(16 << 20),
 	},
 	stabi.RegisteredSealProof_StackedDrg512MiBV1: {
-		SectorMaxLifetime:          fiveYears,
-		ConsensusMinerMinPower:     stabi.NewStoragePower(1 << 30),
+		SectorMaxLifetime:      fiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(1 << 30),
 	},
 	stabi.RegisteredSealProof_StackedDrg32GiBV1: {
-		SectorMaxLifetime:          fiveYears,
-		ConsensusMinerMinPower:     stabi.NewStoragePower(100 << 40),
+		SectorMaxLifetime:      fiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(100 << 40),
 	},
 	stabi.RegisteredSealProof_StackedDrg64GiBV1: {
-		SectorMaxLifetime:          fiveYears,
-		ConsensusMinerMinPower:     stabi.NewStoragePower(200 << 40),
+		SectorMaxLifetime:      fiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(200 << 40),
 	},
 	stabi.RegisteredSealProof_StackedDrg4GiBV1: {
-		SectorMaxLifetime:          fiveYears,
-		ConsensusMinerMinPower:     stabi.NewStoragePower(1 << 33),
+		SectorMaxLifetime:      fiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(1 << 33),
 	},
 	stabi.RegisteredSealProof_StackedDrg16GiBV1: {
-		SectorMaxLifetime:          fiveYears,
-		ConsensusMinerMinPower:     stabi.NewStoragePower(1 << 35),
+		SectorMaxLifetime:      fiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(1 << 35),
 	},
 }
 
@@ -104,9 +104,14 @@ var PoStProofPolicies = map[stabi.RegisteredPoStProof]*PoStProofPolicy{
 	stabi.RegisteredPoStProof_StackedDrgWindow64GiBV1: {
 		WindowPoStPartitionSectors: 2300,
 	},
+	stabi.RegisteredPoStProof_StackedDrgWindow4GiBV1: {
+		WindowPoStPartitionSectors: 600,
+	},
+	stabi.RegisteredPoStProof_StackedDrgWindow16GiBV1: {
+		WindowPoStPartitionSectors: 2300,
+	},
 	// Winning PoSt proof types omitted.
 }
-
 
 // Returns the partition size, in sectors, associated with a Window PoSt proof type.
 // The partition size is the number of sectors proved in a single PoSt proof.
