@@ -104,12 +104,19 @@ var PreCommitSealProofTypesV7 = map[abi.RegisteredSealProof]struct{}{
 	abi.RegisteredSealProof_StackedDrg64GiBV1:   {},
 	abi.RegisteredSealProof_StackedDrg32GiBV1_1: {},
 	abi.RegisteredSealProof_StackedDrg64GiBV1_1: {},
+
+	abi.RegisteredSealProof_StackedDrg4GiBV1:    {},
+	abi.RegisteredSealProof_StackedDrg16GiBV1:   {},
+	abi.RegisteredSealProof_StackedDrg4GiBV1_1:  {},
+	abi.RegisteredSealProof_StackedDrg16GiBV1_1: {},
 }
 
 // From network version 8, sectors sealed with the V1 seal proof types cannot be committed.
 var PreCommitSealProofTypesV8 = map[abi.RegisteredSealProof]struct{}{
 	abi.RegisteredSealProof_StackedDrg32GiBV1_1: {},
 	abi.RegisteredSealProof_StackedDrg64GiBV1_1: {},
+	abi.RegisteredSealProof_StackedDrg4GiBV1_1:  {},
+	abi.RegisteredSealProof_StackedDrg16GiBV1_1: {},
 }
 
 // Checks whether a seal proof type is supported for new miners and sectors.
@@ -128,12 +135,17 @@ func CanPreCommitSealProof(s abi.RegisteredSealProof, nv network.Version) bool {
 var ExtensibleProofTypesV0 = map[abi.RegisteredSealProof]struct{}{
 	abi.RegisteredSealProof_StackedDrg32GiBV1: {},
 	abi.RegisteredSealProof_StackedDrg64GiBV1: {},
+	abi.RegisteredSealProof_StackedDrg4GiBV1:  {},
+	abi.RegisteredSealProof_StackedDrg16GiBV1: {},
 }
 
 // From network version 7, sectors sealed with the V1 seal proof types cannot be extended.
 var ExtensibleProofTypesV7 = map[abi.RegisteredSealProof]struct{}{
 	abi.RegisteredSealProof_StackedDrg32GiBV1_1: {},
 	abi.RegisteredSealProof_StackedDrg64GiBV1_1: {},
+
+	abi.RegisteredSealProof_StackedDrg4GiBV1_1:  {},
+	abi.RegisteredSealProof_StackedDrg16GiBV1_1: {},
 }
 
 // Checks whether a seal proof type is supported for new miners and sectors.
