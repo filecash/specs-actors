@@ -51,7 +51,7 @@ var SealProofPolicies = map[stabi.RegisteredSealProof]*SealProofPolicy{
 		ConsensusMinerMinPower:     stabi.NewStoragePower(1 << 33),
 	},
 	stabi.RegisteredSealProof_StackedDrg16GiBV1: {
-		WindowPoStPartitionSectors: 2300,
+		WindowPoStPartitionSectors: 2500,
 		SectorMaxLifetime:          fiveYears,
 		ConsensusMinerMinPower:     stabi.NewStoragePower(1 << 35),
 	},
