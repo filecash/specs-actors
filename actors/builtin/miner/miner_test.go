@@ -294,7 +294,7 @@ func TestConstruction(t *testing.T) {
 		{
 			// Before version 7, only V1 accepted
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version6)
+			rt.SetNetworkVersion(network.Version7)
 			actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1_1)
 			rt.ExpectAbort(exitcode.ErrIllegalArgument, func() {
 				actor.constructAndVerify(rt)
@@ -306,19 +306,19 @@ func TestConstruction(t *testing.T) {
 		{
 			// Version 7 accepts either
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1)
 			actor.constructAndVerify(rt)
 
 			rt = builder.Build(t)
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1_1)
 			actor.constructAndVerify(rt)
 		}
 		{
 			// From version 8, only V1_1 accepted
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version8)
+			rt.SetNetworkVersion(network.Version9)
 			actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1)
 			rt.ExpectAbort(exitcode.ErrIllegalArgument, func() {
 				actor.constructAndVerify(rt)
@@ -556,17 +556,17 @@ func TestCommitments(t *testing.T) {
 		sealProofType       abi.RegisteredSealProof
 	}{{
 		name:                "precommit vests funds in version 6",
-		version:             network.Version6,
+		version:             network.Version7,
 		expectedPledgeDelta: abi.NewTokenAmount(-1000),
 		sealProofType:       abi.RegisteredSealProof_StackedDrg32GiBV1,
 	}, {
 		name:                "precommit stops vesting funds in version 7",
-		version:             network.Version7,
+		version:             network.Version8,
 		expectedPledgeDelta: abi.NewTokenAmount(0),
 		sealProofType:       abi.RegisteredSealProof_StackedDrg32GiBV1_1,
 	}, {
 		name:                "precommit does not vest funds in version 8",
-		version:             network.Version8,
+		version:             network.Version9,
 		expectedPledgeDelta: abi.NewTokenAmount(0),
 		sealProofType:       abi.RegisteredSealProof_StackedDrg32GiBV1_1,
 	}} {
@@ -861,14 +861,14 @@ func TestCommitments(t *testing.T) {
 		// Too big at version 4
 		proveCommit := makeProveCommit(sectorNo)
 		proveCommit.Proof = make([]byte, 1920)
-		rt.SetNetworkVersion(network.Version4)
+		rt.SetNetworkVersion(network.Version5)
 		rt.ExpectAbort(exitcode.ErrIllegalArgument, func() {
 			actor.proveCommitSectorAndConfirm(rt, precommit, proveCommit, proveCommitConf{})
 		})
 		rt.Reset()
 
 		// Good proof at version 5
-		rt.SetNetworkVersion(network.Version5)
+		rt.SetNetworkVersion(network.Version6)
 		actor.proveCommitSectorAndConfirm(rt, precommit, proveCommit, proveCommitConf{})
 		st := getState(rt)
 
@@ -896,17 +896,17 @@ func TestCommitments(t *testing.T) {
 		sealProofType      abi.RegisteredSealProof
 	}{{
 		name:               "verify proof vests funds in network version 6",
-		version:            network.Version6,
+		version:            network.Version7,
 		vestingPledgeDelta: abi.NewTokenAmount(-1000),
 		sealProofType:      abi.RegisteredSealProof_StackedDrg32GiBV1,
 	}, {
 		name:               "verify proof does not vest starting version 7",
-		version:            network.Version7,
+		version:            network.Version8,
 		vestingPledgeDelta: abi.NewTokenAmount(0),
 		sealProofType:      abi.RegisteredSealProof_StackedDrg32GiBV1_1,
 	}, {
 		name:               "verify proof still does not vest at version 7",
-		version:            network.Version8,
+		version:            network.Version9,
 		vestingPledgeDelta: abi.NewTokenAmount(0),
 		sealProofType:      abi.RegisteredSealProof_StackedDrg32GiBV1_1,
 	}} {
@@ -1045,7 +1045,7 @@ func TestCommitments(t *testing.T) {
 			Build(t)
 
 		// Create miner before version 7
-		rt.SetNetworkVersion(network.Version6)
+		rt.SetNetworkVersion(network.Version7)
 		actor.constructAndVerify(rt)
 		precommitEpoch := periodOffset + 1
 		rt.SetEpoch(precommitEpoch)
@@ -1066,7 +1066,7 @@ func TestCommitments(t *testing.T) {
 		}
 		{
 			// At version 7, both are accepted
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			pc := actor.makePreCommit(102, challengeEpoch, expiration, nil)
 			pc.SealProof = abi.RegisteredSealProof_StackedDrg32GiBV1
 			actor.preCommitSector(rt, pc, preCommitConf{})
@@ -1076,7 +1076,7 @@ func TestCommitments(t *testing.T) {
 		}
 		{
 			// After version 7, only V1_1 accepted
-			rt.SetNetworkVersion(network.Version8)
+			rt.SetNetworkVersion(network.Version9)
 			pc := actor.makePreCommit(104, challengeEpoch, expiration, nil)
 			pc.SealProof = abi.RegisteredSealProof_StackedDrg32GiBV1
 			rt.ExpectAbort(exitcode.ErrIllegalArgument, func() {
@@ -1942,7 +1942,7 @@ func TestCCUpgrade(t *testing.T) {
 		rt := builderForHarness(actor).
 			WithBalance(bigBalance, big.Zero()).
 			Build(t)
-		rt.SetNetworkVersion(network.Version7) // Version 7 allows both seal proof types
+		rt.SetNetworkVersion(network.Version8) // Version 7 allows both seal proof types
 		actor.constructAndVerify(rt)
 
 		// Commit and prove first sector with V1
@@ -2094,7 +2094,7 @@ func TestWindowPost(t *testing.T) {
 		{
 			// Before version 7, the rejection is a side-effect of there being no active sectors after
 			// the duplicate is ignored.
-			rt.SetNetworkVersion(network.Version6)
+			rt.SetNetworkVersion(network.Version7)
 			rt.ExpectValidateCallerAddr(append(actor.controlAddrs, actor.owner, actor.worker)...)
 			rt.ExpectGetRandomnessTickets(crypto.DomainSeparationTag_PoStChainCommit, dlinfo.Challenge, nil, commitRand)
 			rt.ExpectAbortContainsMessage(exitcode.ErrIllegalArgument, "no active sectors", func() {
@@ -2105,7 +2105,7 @@ func TestWindowPost(t *testing.T) {
 
 		{
 			// From version 7, a duplicate is explicitly rejected.
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			rt.ExpectValidateCallerAddr(append(actor.controlAddrs, actor.owner, actor.worker)...)
 			rt.ExpectGetRandomnessTickets(crypto.DomainSeparationTag_PoStChainCommit, dlinfo.Challenge, nil, commitRand)
 			rt.ExpectAbortContainsMessage(exitcode.ErrIllegalArgument, "partition already proven", func() {
@@ -2166,7 +2166,7 @@ func TestWindowPost(t *testing.T) {
 			// Before network version 6, the miner would silently drop the sector infos for the partition already
 			// proven. This means that the sectors provided for verification would not match the sectors from
 			// which the proof was constructed by the miner worker, so will be rejected.
-			rt.SetNetworkVersion(network.Version6)
+			rt.SetNetworkVersion(network.Version7)
 			sectorsSubmitted := []*miner.SectorOnChainInfo{lastSector} // Doesn't match partitions
 			rt.ExpectAbortContainsMessage(exitcode.ErrIllegalArgument, "invalid PoSt", func() {
 				actor.submitWindowPoSt(rt, dlinfo, partitions, sectorsSubmitted, &poStConfig{
@@ -2177,7 +2177,7 @@ func TestWindowPost(t *testing.T) {
 			rt.Reset()
 
 			// From network version 7, the miner outright rejects attempts to prove a partition twice.
-			rt.SetNetworkVersion(network.Version7)
+			rt.SetNetworkVersion(network.Version8)
 			rt.ExpectAbortContainsMessage(exitcode.ErrIllegalArgument, "partition already proven", func() {
 				actor.submitWindowPoSt(rt, dlinfo, partitions, sectorsToProve, &poStConfig{
 					expectedPowerDelta: pwr,
@@ -3068,7 +3068,7 @@ func TestExtendSectorExpiration(t *testing.T) {
 
 	t.Run("fails to update deadline expiration queue until nv=7", func(t *testing.T) {
 		rt := builder.Build(t)
-		rt.SetNetworkVersion(network.Version6)
+		rt.SetNetworkVersion(network.Version7)
 		// set actor to use proof type valid for nv=6
 		proofTypeDefault := actor.sealProofType
 		actor.sealProofType = abi.RegisteredSealProof_StackedDrg32GiBV1
@@ -3253,7 +3253,7 @@ func TestExtendSectorExpiration(t *testing.T) {
 		rt := builderForHarness(actor).
 			WithBalance(bigBalance, big.Zero()).
 			Build(t)
-		rt.SetNetworkVersion(network.Version7)
+		rt.SetNetworkVersion(network.Version8)
 		actor.constructAndVerify(rt)
 
 		// Commit and prove first sector with V1
@@ -4333,7 +4333,7 @@ func TestApplyRewards(t *testing.T) {
 		actor.setProofType(abi.RegisteredSealProof_StackedDrg32GiBV1)
 		{
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version5)
+			rt.SetNetworkVersion(network.Version6)
 			actor.constructAndVerify(rt)
 
 			rwd := abi.NewTokenAmount(1_000_000)
@@ -4343,7 +4343,7 @@ func TestApplyRewards(t *testing.T) {
 		}
 		{
 			rt := builder.Build(t)
-			rt.SetNetworkVersion(network.Version6)
+			rt.SetNetworkVersion(network.Version7)
 			actor.constructAndVerify(rt)
 
 			rwd := abi.NewTokenAmount(1_000_000)
@@ -4978,7 +4978,7 @@ func (h *actorHarness) preCommitSector(rt *mock.Runtime, params *miner.PreCommit
 		if !conf.pledgeDelta.IsZero() {
 			rt.ExpectSend(builtin.StoragePowerActorAddr, builtin.MethodsPower.UpdatePledgeTotal, conf.pledgeDelta, big.Zero(), nil, exitcode.Ok)
 		}
-	} else if rt.NetworkVersion() < network.Version7 {
+	} else if rt.NetworkVersion() < network.Version8 {
 		pledgeDelta := immediatelyVestingFunds(rt, st).Neg()
 		if !pledgeDelta.IsZero() {
 			rt.ExpectSend(builtin.StoragePowerActorAddr, builtin.MethodsPower.UpdatePledgeTotal, &pledgeDelta, big.Zero(), nil, exitcode.Ok)

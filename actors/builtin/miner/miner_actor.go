@@ -370,7 +370,7 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 	}
 
 	partitionIndexes := bitfield.New()
-	if nv >= network.Version7 {
+	if nv >= network.Version8 {
 		for _, partition := range params.Partitions {
 			partitionIndexes.Set(partition.Index)
 		}
@@ -439,7 +439,7 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 		deadline, err := deadlines.LoadDeadline(store, params.Deadline)
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to load deadline %d", params.Deadline)
 
-		if nv >= network.Version7 {
+		if nv >= network.Version8 {
 			alreadyProven, err := bitfield.IntersectBitField(deadline.PostSubmissions, partitionIndexes)
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to check proven partitions")
 			empty, err := alreadyProven.IsEmpty()
@@ -578,7 +578,7 @@ func (a Actor) PreCommitSector(rt Runtime, params *PreCommitSectorParams) *abi.E
 	feeToBurn := abi.NewTokenAmount(0)
 	rt.StateTransaction(&st, func() {
 		// Stop vesting funds as of version 7. Its computationally expensive and unlikely to release any funds.
-		if rt.NetworkVersion() < network.Version7 {
+		if rt.NetworkVersion() < network.Version8 {
 			newlyVested, err = st.UnlockVestedFunds(store, rt.CurrEpoch())
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to vest funds")
 		}
@@ -597,7 +597,7 @@ func (a Actor) PreCommitSector(rt Runtime, params *PreCommitSectorParams) *abi.E
 			rt.Abortf(exitcode.ErrForbidden, "precommit not allowed during active consensus fault")
 		}
 
-		if nv < network.Version7 {
+		if nv < network.Version8 {
 			if params.SealProof != info.SealProofType {
 				rt.Abortf(exitcode.ErrIllegalArgument, "sector seal proof %v must match miner seal proof type %d", params.SealProof, info.SealProofType)
 			}
@@ -913,7 +913,7 @@ func (a Actor) ConfirmSectorProofsValid(rt Runtime, params *builtin.ConfirmSecto
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to assign new sectors to deadlines")
 
 		// Stop unlocking funds as of version 7. It's computationally expensive and unlikely to actually unlock anything.
-		if rt.NetworkVersion() < network.Version7 {
+		if rt.NetworkVersion() < network.Version8 {
 			newlyVested, err = st.UnlockVestedFunds(store, rt.CurrEpoch())
 			if err != nil {
 				rt.Abortf(exitcode.ErrIllegalState, "failed to vest new funds: %s", err)
@@ -1114,7 +1114,7 @@ func (a Actor) ExtendSectorExpiration(rt Runtime, params *ExtendSectorExpiration
 				builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to save deadline %v partition %v", dlIdx, decl.Partition)
 
 				// Record the new partition expiration epoch for setting outside this loop over declarations.
-				if nv >= network.Version7 {
+				if nv >= network.Version8 {
 					prevEpochPartitions, ok := partitionsByNewEpoch[decl.NewExpiration]
 					partitionsByNewEpoch[decl.NewExpiration] = append(prevEpochPartitions, decl.Partition)
 					if !ok {
@@ -1127,7 +1127,7 @@ func (a Actor) ExtendSectorExpiration(rt Runtime, params *ExtendSectorExpiration
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to save partitions for deadline %d", dlIdx)
 
 			// Record partitions in deadline expiration queue
-			if nv >= network.Version7 {
+			if nv >= network.Version8 {
 				for _, epoch := range epochsToReschedule {
 					pIdxs := partitionsByNewEpoch[epoch]
 					err := deadline.AddExpirationPartitions(store, epoch, pIdxs, quant)
@@ -2031,7 +2031,7 @@ func validateReplaceSector(rt Runtime, st *State, store adt.Store, params *PreCo
 	if len(replaceSector.DealIDs) > 0 {
 		rt.Abortf(exitcode.ErrIllegalArgument, "cannot replace sector %v which has deals", params.ReplaceSectorNumber)
 	}
-	if nv < network.Version7 {
+	if nv < network.Version8 {
 		if params.SealProof != replaceSector.SealProof {
 			rt.Abortf(exitcode.ErrIllegalArgument, "cannot replace sector %v seal proof %v with seal proof %v",
 				params.ReplaceSectorNumber, replaceSector.SealProof, params.SealProof)

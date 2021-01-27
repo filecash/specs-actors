@@ -1897,7 +1897,7 @@ func TestLockBalance(t *testing.T) {
 		})
 		rt.Reset()
 	})
-	
+
 	t.Run("checks preconditions", func(t *testing.T) {
 		rt := builder.Build(t)
 
@@ -1918,7 +1918,7 @@ func TestLockBalance(t *testing.T) {
 		})
 
 		// Before version 7, allow negative amount.
-		rt.SetNetworkVersion(network.Version6)
+		rt.SetNetworkVersion(network.Version7)
 		actor.lockBalance(rt, vestStart, vestDuration, abi.NewTokenAmount(-1))
 	})
 }

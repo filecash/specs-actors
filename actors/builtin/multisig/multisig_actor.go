@@ -465,7 +465,7 @@ func (a Actor) LockBalance(rt runtime.Runtime, params *LockBalanceParams) *abi.E
 	}
 
 	nv := rt.NetworkVersion()
-	if nv >= network.Version7 && params.Amount.LessThan(big.Zero()) {
+	if nv >= network.Version8 && params.Amount.LessThan(big.Zero()) {
 		rt.Abortf(exitcode.ErrIllegalArgument, "amount to lock must be positive")
 	}
 
@@ -562,7 +562,7 @@ func executeTransactionIfApproved(rt runtime.Runtime, st State, txnID TxnID, txn
 			// Starting at version 6 we first check if the transaction exists before
 			// deleting. This allows 1 out of n multisig swaps and removes initiated
 			// by the swapped/removed signer to go through without an illegal state error
-			if nv >= network.Version6 {
+			if nv >= network.Version7 {
 				txnExists, err := ptx.Has(txnID)
 				builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to check existance of transaction %v for cleanup", txnID)
 				shouldDelete = txnExists

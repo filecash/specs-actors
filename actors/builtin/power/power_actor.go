@@ -2,6 +2,7 @@ package power
 
 import (
 	"bytes"
+
 	addr "github.com/filecoin-project/go-address"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/cbor"
@@ -140,7 +141,7 @@ func (a Actor) CreateMiner(rt Runtime, params *CreateMinerParams) *CreateMinerRe
 		st.MinerCount += 1
 
 		// starting version 7, call addToClaim to ensure new claim updates all power stats
-		if rt.NetworkVersion() >= network.Version7 {
+		if rt.NetworkVersion() >= network.Version8 {
 			err := st.updateStatsForNewMiner(params.SealProofType)
 			builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed update power stats for new miner %v", addresses.IDAddress)
 		}
@@ -494,7 +495,7 @@ func (a Actor) processDeferredCronEvents(rt Runtime) {
 				}
 
 				// Starting version 7, decrement miner count to keep stats consistent.
-				if rt.NetworkVersion() >= network.Version7 {
+				if rt.NetworkVersion() >= network.Version8 {
 					st.MinerCount--
 				}
 			}

@@ -122,10 +122,10 @@ var PreCommitSealProofTypesV8 = map[abi.RegisteredSealProof]struct{}{
 // Checks whether a seal proof type is supported for new miners and sectors.
 func CanPreCommitSealProof(s abi.RegisteredSealProof, nv network.Version) bool {
 	_, ok := PreCommitSealProofTypesV0[s]
-	if nv >= network.Version7 {
+	if nv >= network.Version8 {
 		_, ok = PreCommitSealProofTypesV7[s]
 	}
-	if nv >= network.Version8 {
+	if nv >= network.Version9 {
 		_, ok = PreCommitSealProofTypesV8[s]
 	}
 	return ok
@@ -151,7 +151,7 @@ var ExtensibleProofTypesV7 = map[abi.RegisteredSealProof]struct{}{
 // Checks whether a seal proof type is supported for new miners and sectors.
 func CanExtendSealProofType(s abi.RegisteredSealProof, nv network.Version) bool {
 	_, ok := ExtensibleProofTypesV0[s]
-	if nv >= network.Version7 {
+	if nv >= network.Version8 {
 		_, ok = ExtensibleProofTypesV7[s]
 	}
 	return ok
