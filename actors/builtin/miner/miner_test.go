@@ -2298,7 +2298,7 @@ func (h *actorHarness) setProofType(proof abi.RegisteredSealProof) {
 	require.NoError(h.t, err)
 	h.sectorSize, err = proof.SectorSize()
 	require.NoError(h.t, err)
-	h.partitionSize, err = builtin.SealProofWindowPoStPartitionSectors(proof)
+	h.partitionSize, err = builtin.SealProofWindowPoStPartitionSectors(proof, network.Version1)
 	require.NoError(h.t, err)
 }
 

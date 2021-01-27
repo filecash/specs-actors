@@ -13,6 +13,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/weaveworks/common/network"
 
 	"github.com/filecoin-project/specs-actors/actors/builtin"
 	"github.com/filecoin-project/specs-actors/actors/builtin/miner"
@@ -622,7 +623,7 @@ func TestAddPreCommitExpiry(t *testing.T) {
 }
 
 func TestSectorAssignment(t *testing.T) {
-	partitionSectors, err := builtin.SealProofWindowPoStPartitionSectors(abi.RegisteredSealProof_StackedDrg32GiBV1)
+	partitionSectors, err := builtin.SealProofWindowPoStPartitionSectors(abi.RegisteredSealProof_StackedDrg32GiBV1, network.Version1)
 	require.NoError(t, err)
 	sectorSize, err := abi.RegisteredSealProof_StackedDrg32GiBV1.SectorSize()
 	require.NoError(t, err)
@@ -856,7 +857,7 @@ func constructStateHarness(t *testing.T, periodBoundary abi.ChainEpoch) *stateHa
 	sectorSize, err := testSealProofType.SectorSize()
 	require.NoError(t, err)
 
-	partitionSectors, err := builtin.SealProofWindowPoStPartitionSectors(testSealProofType)
+	partitionSectors, err := builtin.SealProofWindowPoStPartitionSectors(testSealProofType, network.Version1)
 	require.NoError(t, err)
 
 	info := miner.MinerInfo{

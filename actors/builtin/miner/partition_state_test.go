@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/filecoin-project/go-bitfield"
+	"github.com/filecoin-project/go-data-transfer/network"
 	"github.com/filecoin-project/go-state-types/abi"
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/stretchr/testify/assert"
@@ -574,7 +575,7 @@ func TestPartitions(t *testing.T) {
 		proofType := abi.RegisteredSealProof_StackedDrg32GiBV1
 		sectorSize, err := proofType.SectorSize()
 		require.NoError(t, err)
-		partitionSectors, err := builtin.SealProofWindowPoStPartitionSectors(proofType)
+		partitionSectors, err := builtin.SealProofWindowPoStPartitionSectors(proofType, network.Version1)
 		require.NoError(t, err)
 
 		manySectors := make([]*miner.SectorOnChainInfo, partitionSectors)

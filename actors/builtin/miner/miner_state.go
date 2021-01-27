@@ -11,6 +11,7 @@ import (
 	"github.com/filecoin-project/go-state-types/big"
 	"github.com/filecoin-project/go-state-types/dline"
 	xc "github.com/filecoin-project/go-state-types/exitcode"
+	"github.com/filecoin-project/go-state-types/network"
 	cid "github.com/ipfs/go-cid"
 	errors "github.com/pkg/errors"
 	xerrors "golang.org/x/xerrors"
@@ -177,14 +178,14 @@ func ConstructState(infoCid cid.Cid, periodStart abi.ChainEpoch, emptyBitfieldCi
 }
 
 func ConstructMinerInfo(owner addr.Address, worker addr.Address, controlAddrs []addr.Address, pid []byte,
-	multiAddrs [][]byte, sealProofType abi.RegisteredSealProof) (*MinerInfo, error) {
+	multiAddrs [][]byte, sealProofType abi.RegisteredSealProof, nv network.Version) (*MinerInfo, error) {
 
 	sectorSize, err := sealProofType.SectorSize()
 	if err != nil {
 		return nil, err
 	}
 
-	partitionSectors, err := builtin.SealProofWindowPoStPartitionSectors(sealProofType)
+	partitionSectors, err := builtin.SealProofWindowPoStPartitionSectors(sealProofType, nv)
 	if err != nil {
 		return nil, err
 	}
