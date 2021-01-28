@@ -2,6 +2,7 @@ package builtin
 
 import (
 	stabi "github.com/filecoin-project/go-state-types/abi"
+	"github.com/filecoin-project/go-state-types/network"
 	"github.com/pkg/errors"
 )
 
@@ -48,12 +49,12 @@ var SealProofPolicies = map[stabi.RegisteredSealProof]*SealProofPolicy{
 
 // Returns the partition size, in sectors, associated with a seal proof type.
 // The partition size is the number of sectors proved in a single PoSt proof.
-func SealProofWindowPoStPartitionSectors(p stabi.RegisteredSealProof) (uint64, error) {
+func SealProofWindowPoStPartitionSectors(p stabi.RegisteredSealProof, nv network.Version) (uint64, error) {
 	wPoStProofType, err := p.RegisteredWindowPoStProof()
 	if err != nil {
 		return 0, err
 	}
-	return PoStProofWindowPoStPartitionSectors(wPoStProofType)
+	return PoStProofWindowPoStPartitionSectors(wPoStProofType, nv)
 }
 
 // SectorMaximumLifetime is the maximum duration a sector sealed with this proof may exist between activation and expiration
@@ -115,10 +116,15 @@ var PoStProofPolicies = map[stabi.RegisteredPoStProof]*PoStProofPolicy{
 
 // Returns the partition size, in sectors, associated with a Window PoSt proof type.
 // The partition size is the number of sectors proved in a single PoSt proof.
-func PoStProofWindowPoStPartitionSectors(p stabi.RegisteredPoStProof) (uint64, error) {
+func PoStProofWindowPoStPartitionSectors(p stabi.RegisteredPoStProof, nv network.Version) (uint64, error) {
 	info, ok := PoStProofPolicies[p]
 	if !ok {
 		return 0, errors.Errorf("unsupported proof type: %v", p)
+	}
+	if nv < network.Version4 {
+		if p == stabi.RegisteredSealProof_StackedDrg16GiBV1 {
+			info.WindowPoStPartitionSectors = 2300
+		}
 	}
 	return info.WindowPoStPartitionSectors, nil
 }
