@@ -122,7 +122,7 @@ func PoStProofWindowPoStPartitionSectors(p stabi.RegisteredPoStProof, nv network
 		return 0, errors.Errorf("unsupported proof type: %v", p)
 	}
 	if nv < network.Version4 {
-		if p == stabi.RegisteredSealProof_StackedDrg16GiBV1 {
+		if p == stabi.RegisteredPoStProof_StackedDrgWindow16GiBV1 {
 			info.WindowPoStPartitionSectors = 2300
 		}
 	}
