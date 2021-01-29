@@ -67,7 +67,7 @@ func SealProofWindowPoStPartitionSectors(p stabi.RegisteredSealProof, nv network
 	}
 	if nv < network.Version4 {
 		if p == stabi.RegisteredSealProof_StackedDrg16GiBV1 {
-			info.WindowPoStPartitionSectors = 2300
+			return  uint64(2300), nil
 		}
 	}
 	return info.WindowPoStPartitionSectors, nil
