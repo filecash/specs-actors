@@ -123,7 +123,7 @@ func PoStProofWindowPoStPartitionSectors(p stabi.RegisteredPoStProof, nv network
 	}
 	if nv < network.Version4 {
 		if p == stabi.RegisteredPoStProof_StackedDrgWindow16GiBV1 {
-			info.WindowPoStPartitionSectors = 2300
+			return uint64(2300), nil
 		}
 	}
 	return info.WindowPoStPartitionSectors, nil
