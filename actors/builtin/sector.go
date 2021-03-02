@@ -45,6 +45,36 @@ var SealProofPolicies = map[stabi.RegisteredSealProof]*SealProofPolicy{
 		SectorMaxLifetime:      EpochsInFiveYears,
 		ConsensusMinerMinPower: stabi.NewStoragePower(1 << 35),
 	},
+
+	stabi.RegisteredSealProof_StackedDrg2KiBV1_1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(0),
+	},
+	stabi.RegisteredSealProof_StackedDrg8MiBV1_1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(16 << 20),
+	},
+	stabi.RegisteredSealProof_StackedDrg512MiBV1_1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(1 << 30),
+	},
+	stabi.RegisteredSealProof_StackedDrg32GiBV1_1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(10 << 40),
+	},
+	stabi.RegisteredSealProof_StackedDrg64GiBV1_1: {
+
+		SectorMaxLifetime:      EpochsInFiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(200 << 40),
+	},
+	stabi.RegisteredSealProof_StackedDrg4GiBV1_1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(1 << 33),
+	},
+	stabi.RegisteredSealProof_StackedDrg16GiBV1_1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+		ConsensusMinerMinPower: stabi.NewStoragePower(1 << 35),
+	},
 }
 
 // Returns the partition size, in sectors, associated with a seal proof type.
@@ -61,7 +91,7 @@ func SealProofWindowPoStPartitionSectors(p stabi.RegisteredSealProof, nv network
 func SealProofSectorMaximumLifetime(p stabi.RegisteredSealProof) (stabi.ChainEpoch, error) {
 	info, ok := SealProofPolicies[p]
 	if !ok {
-		return 0, errors.Errorf("unsupported proof type: %v", p)
+		return 0, errors.Errorf("7 unsupported proof type: %v", p)
 	}
 	return info.SectorMaxLifetime, nil
 }
@@ -77,7 +107,7 @@ func SealProofSectorMaximumLifetime(p stabi.RegisteredSealProof) (stabi.ChainEpo
 func ConsensusMinerMinPower(p stabi.RegisteredSealProof) (stabi.StoragePower, error) {
 	info, ok := SealProofPolicies[p]
 	if !ok {
-		return stabi.NewStoragePower(0), errors.Errorf("unsupported proof type: %v", p)
+		return stabi.NewStoragePower(0), errors.Errorf("8 unsupported proof type: %v", p)
 	}
 	return info.ConsensusMinerMinPower, nil
 }
@@ -119,7 +149,7 @@ var PoStProofPolicies = map[stabi.RegisteredPoStProof]*PoStProofPolicy{
 func PoStProofWindowPoStPartitionSectors(p stabi.RegisteredPoStProof, nv network.Version) (uint64, error) {
 	info, ok := PoStProofPolicies[p]
 	if !ok {
-		return 0, errors.Errorf("unsupported proof type: %v", p)
+		return 0, errors.Errorf("2 unsupported proof type: %v", p)
 	}
 	if nv < network.Version4 {
 		if p == stabi.RegisteredPoStProof_StackedDrgWindow16GiBV1 {
