@@ -29,6 +29,12 @@ var SealProofPolicies = map[stabi.RegisteredSealProof]*SealProofPolicy{
 	stabi.RegisteredSealProof_StackedDrg64GiBV1: {
 		SectorMaxLifetime:      EpochsInFiveYears,
 	},
+	stabi.RegisteredSealProof_StackedDrg4GiBV1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+	},
+	stabi.RegisteredSealProof_StackedDrg16GiBV1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+	},
 
 	stabi.RegisteredSealProof_StackedDrg2KiBV1_1: {
 		SectorMaxLifetime:      EpochsInFiveYears,
@@ -43,6 +49,12 @@ var SealProofPolicies = map[stabi.RegisteredSealProof]*SealProofPolicy{
 		SectorMaxLifetime:      EpochsInFiveYears,
 	},
 	stabi.RegisteredSealProof_StackedDrg64GiBV1_1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+	},
+	stabi.RegisteredSealProof_StackedDrg4GiBV1_1: {
+		SectorMaxLifetime:      EpochsInFiveYears,
+	},
+	stabi.RegisteredSealProof_StackedDrg16GiBV1_1: {
 		SectorMaxLifetime:      EpochsInFiveYears,
 	},
 }
