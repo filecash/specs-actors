@@ -13,6 +13,7 @@ import (
 	xc "github.com/filecoin-project/go-state-types/exitcode"
 	"github.com/filecoin-project/go-state-types/network"
 	cid "github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
 	errors "github.com/pkg/errors"
 	xerrors "golang.org/x/xerrors"
 
@@ -20,6 +21,8 @@ import (
 	. "github.com/filecoin-project/specs-actors/actors/util"
 	"github.com/filecoin-project/specs-actors/actors/util/adt"
 )
+
+var log = logging.Logger("miner_actor0")
 
 // Balance of Miner Actor should be greater than or equal to
 // the sum of PreCommitDeposits and LockedFunds.
@@ -189,6 +192,7 @@ func ConstructMinerInfo(owner addr.Address, worker addr.Address, controlAddrs []
 	if err != nil {
 		return nil, err
 	}
+	log.Debugf("v0.9 ConstructMinerInfo sealProofType[%v], sectorSize[%v] \n", sealProofType, sectorSize)
 	return &MinerInfo{
 		Owner:                      owner,
 		Worker:                     worker,
