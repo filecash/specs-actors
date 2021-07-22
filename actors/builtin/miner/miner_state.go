@@ -12,12 +12,15 @@ import (
 	"github.com/filecoin-project/go-state-types/dline"
 	xc "github.com/filecoin-project/go-state-types/exitcode"
 	cid "github.com/ipfs/go-cid"
+	logging "github.com/ipfs/go-log/v2"
 	errors "github.com/pkg/errors"
 	xerrors "golang.org/x/xerrors"
 
 	"github.com/filecoin-project/specs-actors/v3/actors/builtin"
 	"github.com/filecoin-project/specs-actors/v3/actors/util/adt"
 )
+
+var log = logging.Logger("miner_actor3")
 
 // Balance of Miner Actor should be greater than or equal to
 // the sum of PreCommitDeposits and LockedFunds.
@@ -241,6 +244,7 @@ func ConstructMinerInfo(owner, worker addr.Address, controlAddrs []addr.Address,
 		return nil, xc.ErrIllegalArgument.Wrapf("invalid partition sectors: %w", err)
 	}
 
+	log.Debugf("v3.0 ConstructMinerInfo windowPoStProofType[%v],sectorSize[%v] \n", windowPoStProofType, sectorSize)
 	return &MinerInfo{
 		Owner:                      owner,
 		Worker:                     worker,
